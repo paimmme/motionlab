@@ -119,6 +119,13 @@
   .data p.sub{margin:0 0 12px;color:var(--ink2);font-size:13.5px;max-width:80ch}
   .data .drow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
   textarea#jsonBox{width:100%;min-height:190px;font-family:var(--mono);font-size:12px;line-height:1.55;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);resize:vertical}
+  #specBox{width:100%;min-height:170px;font-family:var(--mono);font-size:12px;line-height:1.55;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);resize:vertical}
+  .specrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .specrow input[type="text"]{flex:1 1 220px;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-family:inherit;font-size:14px}
+  .libitem{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}
+  .libitem b{font-size:14px}
+  .libitem .meta{font-size:12.5px;color:var(--ink2);margin-top:2px}
+  .libitem .tag{display:inline-block;font-family:var(--mono);font-size:11px;background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin:2px 3px 0 0;color:var(--ink)}
   #jsonMsg{font-size:13px;margin:6px 0 0;min-height:1.4em;color:var(--ink2)}
   .spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:14px}
   .spec div{border:1px solid var(--line);padding:10px 12px;border-radius:6px}
@@ -170,7 +177,7 @@
 
   <!-- 一句话生成 -->
   <section class="sentence" aria-label="一句话生成动作草稿">
-    <label for="sentenceInput">一句话 → 动作草稿（关键词解析，只改预设和参数，不直接画画）</label>
+    <label for="sentenceInput">一句话 → 动作草稿（先生成 MotionSpec 导演稿，再编译成 motionlab-0.1，不直接画画）</label>
     <div class="row">
       <input type="text" id="sentenceInput" value="蓄力跳得远一点，落地要有缓冲" autocomplete="off" />
       <button class="btn accent" id="btnParse" type="button">生成草稿</button>
@@ -182,6 +189,15 @@
       <button type="button" data-sentence="犹豫一下，然后快速出拳">犹豫一下，然后快速出拳</button>
     </div>
     <p id="parseNote" role="status"></p>
+    <div class="drow" style="margin-top:12px">
+      <input type="password" id="aiKey" placeholder="Deepseek API Key（只存本机，不发给 Muse、不进导出）" autocomplete="off" style="flex:2" />
+      <input type="text" id="aiModel" value="deepseek-v4-flash" autocomplete="off" aria-label="模型" style="flex:1" />
+      <select id="aiReasoning" aria-label="推理强度"><option value="low" selected>推理：低</option><option value="medium">推理：中</option><option value="high">推理：高</option></select>
+      <button class="btn accent small" id="btnAI" type="button">AI 生成 Spec</button>
+      <button class="btn ghost small" id="btnAIClear" type="button">清除本机 Key</button>
+    </div>
+    <p id="aiMsg" role="status" style="font-size:13px;color:var(--ink2)"></p>
+    <p style="font-size:12.5px;color:var(--ink3)">AI 只翻译意图，不画画：它输出的必须是 motionspec-0.1 JSON，走和粘贴 Spec 同一条校验/应用路径，参数超出范围会被 clamp 并警告。没有 Key 时点按钮不会联网，只会提示你填 Key。Key 存在本机 localStorage，页面刷新还在，点“清除本机 Key”就删掉。</p>
   </section>
 
   <!-- 实验室 -->
@@ -220,6 +236,7 @@
           <label><input type="checkbox" id="tgCom" checked /> 重心与脚底标记</label>
           <label><input type="checkbox" id="tgShake" checked /> 命中震屏</label>
           <label><input type="checkbox" id="tgLoop" checked /> 循环播放</label>
+          <label>运镜 <select id="camMode" aria-label="运镜模式"><option value="static" selected>固定机位</option><option value="follow">跟随主角</option><option value="impact">打击推近</option><option value="pan">横移扫过</option></select></label>
         </div>
       </div>
 
@@ -237,6 +254,11 @@
       <section aria-label="校验">
         <h3>校验 · 工具当裁判（逐帧采样实测）</h3>
         <ul class="check" id="checkList"></ul>
+        <div class="drow">
+          <button class="btn small" id="btnCritic" type="button">校验修复 · 最多 3 轮</button>
+          <button class="btn ghost small" id="btnCriticUndo" type="button">撤销修复</button>
+        </div>
+        <p id="criticMsg" role="status"></p>
       </section>
       <section aria-label="手感提示">
         <h3>这一预设在调什么</h3>
@@ -259,10 +281,112 @@
     <p id="jsonMsg" role="status"></p>
     <div class="spec">
       <div><b>rig</b><p>骨架：节点名 + 每段骨头的固定长度。Claw 侧把自己的关键节点一一映射过来，段长在两边都锁死。</p></div>
-      <div><b>tracks + params + phases</b><p>根节点轨迹按阶段边界采样导出，关节姿态由参数和阶段表在两边用同一套配方重建。渲染端执行同一组数，预演和成片不会各说各话。</p></div>
-      <div><b>events</b><p>语义事件：蓄力开始、离地、命中、落地、停顿起止。口播、镜头跟随和音效都挂在事件上，不挂在帧号上。</p></div>
-      <div><b>checks</b><p>导出时的校验快照：段长偏差、脚滑、重心、出画。渲染完回填一遍，就能对账预演有没有被执行。</p></div>
+      <div><b>tracks（逐帧关节）</b><p>主角与对手的全部 15 个节点按 60fps 逐帧导出，坐标为舞台 px（0.1 精度），顺序见 rig.nodes。Claw 播放这份轨迹不需要再实现预设逻辑；params 只用于在工具里调手感，不用于回放。根节点轨迹仍按旧格式保留，供旧读取方兼容。</p></div>
+      <div><b>events</b><p>语义事件带帧号：蓄力开始、离地/起跳、命中、落地、停顿起止、收势开始。阶段起点事件保留原类型（类型即阶段名）以兼容旧版。口播、镜头跟随和音效都挂在事件上，不挂在帧号上。</p></div>
+      <div><b>checks</b><p>导出时的完整校验快照，与界面用同一套计算：主角+对手的段长（左右两侧+头）、脚滑（对手只计打击前，击退后位移单独记）、出画、重心范围、打击帧对齐、蓄力/停顿/后摇，并给出 pass。渲染完回填一遍，就能对账预演有没有被执行。</p></div>
     </div>
+  </section>
+
+  <!-- MotionSpec + 动作库 -->
+  <section class="data" aria-label="MotionSpec 与动作库">
+    <h2>MotionSpec · 导演稿 + 动作库</h2>
+    <p class="sub">这是前半部分的核心：AI 或人只写 Spec——预设、参数、意图、改动理由、假设、标签。工具把 Spec 编译成上面的 motionlab-0.1，Claw 只读编译结果，不读 Spec，也不重新猜句子。Spec 里没有逐帧关节角度，角度是求解器从参数算出来的，所以 Spec 能 diff、能复用、能进库。Spec 是快照，不是实时同步：改了滑杆后，点“生成当前 Spec”再保存。</p>
+    <div class="specrow">
+      <input type="text" id="specName" placeholder="动作名称，例如：跳蚤起跳 · 蓄力拉满" autocomplete="off" />
+      <input type="text" id="specTags" placeholder="标签，逗号分隔，例如：起跳, 蓄力" autocomplete="off" />
+    </div>
+    <div class="drow">
+      <button class="btn small" id="btnSpecGenerate" type="button">生成当前 Spec</button>
+      <button class="btn ghost small" id="btnSpecImport" type="button">从 Spec 导入</button>
+      <button class="btn accent small" id="btnSpecSave" type="button">保存到动作库</button>
+      <button class="btn ghost small" id="btnLibExport" type="button">导出动作库</button>
+      <button class="btn ghost small" id="btnLibImport" type="button">导入动作库文件</button>
+      <input type="file" id="libFile" accept="application/json,.json" style="display:none" />
+    </div>
+    <textarea id="specBox" spellcheck="false" aria-label="MotionSpec JSON"></textarea>
+    <p id="specMsg" role="status"></p>
+    <div class="spec">
+      <div><b>motionspec-0.1 字段</b><p>version、preset、params、intent（原文意图）、changes（每处改动：参数、改前、改后、理由）、assumptions（没说清就按默认算的假设，待拍板）、tags、source（sentence / manual / library / seed）。未知参数只警告不拒绝，以便以后扩字段；缺失参数用默认值补齐并警告。</p></div>
+      <div><b>编译路径</b><p>Spec → 校验（版本、预设、参数范围）→ 应用到舞台（切换预设、按范围 clamp 参数）→ 求解器 pose(t) → motionlab-0.1 逐帧 JSON。AI 在 Muse 对话里也可以直接给你一份这样的 Spec，粘到上面文本框，点“从 Spec 导入”，不用经过一句话解析。</p></div>
+      <div><b>动作库</b><p>保存在本机浏览器 localStorage，不走服务器。种子库有 3 条：跳蚤起跳、重拳、二连斩。搜名称、标签或意图就能复用；载入后舞台立刻按该 Spec 重算，导出 motionlab-0.1 时就是那一版。</p></div>
+    </div>
+    <h3 style="margin-top:18px">动作库 · 可复用的导演稿</h3>
+    <div class="specrow">
+      <input type="text" id="libSearch" placeholder="搜动作库：名称 / 标签 / 意图 / 预设" autocomplete="off" />
+    </div>
+    <div id="libList"></div>
+  </section>
+
+  <!-- 场景：把多个 Spec 连成一段 -->
+  <section class="data" aria-label="场景">
+    <h2>场景 · 把几个动作连成一段</h2>
+    <p class="sub">单个动作是词，场景才是句子。原版跳蚤的 5.5 秒也不是一个动作，而是一段建立—打破—跟随—恢复。场景就是把动作库里的 Spec 按顺序排好，段与段之间用一段插值过渡连起来（默认 0.3s），播放时舞台按场景时间走，不用你手动切预设。场景本身也是一份 JSON（motionscene-0.1），Claw 以后可以按段依次播放编译好的 motionlab-0.1，也可以把过渡换成自己的插值。</p>
+    <div class="specrow">
+      <input type="text" id="sceneName" placeholder="场景名称，例如：示例场景 · 起跳→重拳→二连斩" autocomplete="off" />
+      <input type="number" id="sceneTransition" min="0" max="1" step="0.05" value="0.3" aria-label="段间过渡秒数" />
+    </div>
+    <div class="drow">
+      <button class="btn small" id="btnSceneAdd" type="button">把当前 Spec 加入场景</button>
+      <button class="btn accent small" id="btnScenePlay" type="button">播放场景</button>
+      <button class="btn ghost small" id="btnSceneStop" type="button">停止场景</button>
+      <button class="btn ghost small" id="btnSceneExport" type="button">导出场景</button>
+      <button class="btn ghost small" id="btnSceneImport" type="button">导入场景文件</button>
+      <button class="btn ghost small" id="btnSceneClear" type="button">清空场景</button>
+      <input type="file" id="sceneFile" accept="application/json,.json" style="display:none" />
+    </div>
+    <p id="sceneStatus" role="status"></p>
+    <p id="sceneMsg" role="status"></p>
+    <div id="sceneList"></div>
+    <div class="spec">
+      <div><b>过渡是怎么算的</b><p>过渡段内，主角（以及两边都有对手时对手、两边都有剑时剑）的每个节点坐标按 smoothstep 在前一段末帧和后一段首帧之间插值，根节点、剑尖同理。过渡不是硬切，也不是在原预设里加一帧；它是场景层加的，不是动作本身的帧。段内时间仍按各自 Spec 的 timeline 走。</p></div>
+      <div><b>场景与单动作的关系</b><p>场景里每一段都是一份完整的 MotionSpec，改库里的 Spec 不会自动改场景里的那一段——场景存的是那一刻的快照，锁定才有意义。想改场景里某一段，先在库里改好，再重新加入场景。</p></div>
+    </div>
+  </section>
+
+  <!-- 跨域接口：同一套时间线/事件/校验，换求解器 -->
+  <section class="data" aria-label="跨域接口">
+    <h2>跨域接口 · 换约束，不换引擎</h2>
+    <p class="sub">时间线、事件、校验这套语言不变，换的是求解器：生物力学看关节角和重心支撑，机械看行程和啮合，天文看能量和角动量。每个域都有自己的画布、参数、校验和导出（domain-*.1），不混进 motionlab-0.1，不碰 Claw。</p>
+
+    <h3 style="margin-top:18px">生物力学 · 步态（双连杆腿 + 逆运动学）</h3>
+    <p class="sub">骨盆和脚是目标，膝盖由两段腿长（各 50px）用余弦定理解出来，不是画出来的。校验：膝屈曲角、重心是否在支撑面内、摆动脚离地间隙。</p>
+    <canvas id="bioCanvas" width="900" height="300" aria-label="步态画布" style="display:block;width:100%;height:auto"></canvas>
+    <div class="drow">
+      <label>步频 <input type="range" id="bioCadence" min="0.6" max="2" step="0.1" value="1.2" /> <span id="bioCadenceV">1.2 /s</span></label>
+      <label>步幅 <input type="range" id="bioStride" min="40" max="120" step="5" value="80" /> <span id="bioStrideV">80 px</span></label>
+      <label>下蹲 <input type="range" id="bioCrouch" min="0" max="1" step="0.05" value="0.3" /> <span id="bioCrouchV">30%</span></label>
+      <button class="btn small" id="btnBioPlay" type="button">▶ 步态</button>
+      <button class="btn ghost small" id="btnBioExport" type="button">导出步态 JSON</button>
+    </div>
+    <p id="bioChecks" role="status"></p>
+    <textarea id="bioBox" spellcheck="false" aria-label="步态 JSON"></textarea>
+
+    <h3 style="margin-top:18px">机械 · 曲柄滑块 + 齿轮</h3>
+    <p class="sub">曲柄转一圈，活塞走一个来回；齿轮转角是曲柄转角除以齿数比、方向相反。校验：连杆必须长于曲柄、活塞行程 = 2×曲柄半径、齿轮比。</p>
+    <canvas id="mechCanvas" width="900" height="300" aria-label="机械画布" style="display:block;width:100%;height:auto"></canvas>
+    <div class="drow">
+      <label>曲柄半径 <input type="range" id="mechCrank" min="30" max="80" step="5" value="50" /> <span id="mechCrankV">50 px</span></label>
+      <label>连杆长度 <input type="range" id="mechRod" min="120" max="220" step="5" value="150" /> <span id="mechRodV">150 px</span></label>
+      <label>转速 <input type="range" id="mechRpm" min="30" max="120" step="10" value="60" /> <span id="mechRpmV">60 rpm</span></label>
+      <label>齿轮比 <input type="range" id="mechRatio" min="1" max="3" step="0.5" value="2" /> <span id="mechRatioV">2</span></label>
+      <button class="btn small" id="btnMechPlay" type="button">▶ 机械</button>
+      <button class="btn ghost small" id="btnMechExport" type="button">导出机械 JSON</button>
+    </div>
+    <p id="mechChecks" role="status"></p>
+    <textarea id="mechBox" spellcheck="false" aria-label="机械 JSON"></textarea>
+
+    <h3 style="margin-top:18px">天文 · 开普勒轨道 + 近地点点火</h3>
+    <p class="sub">轨道不是画出来的椭圆，是开普勒方程牛顿迭代解出来的位置；近地点给一个切向速度增量，变轨后的新轨道由活力公式和角动量算出来，不是手画的。校验：每段内能量和角动量守恒、周期符合开普勒第三定律。</p>
+    <canvas id="astroCanvas" width="900" height="300" aria-label="轨道画布" style="display:block;width:100%;height:auto"></canvas>
+    <div class="drow">
+      <label>偏心率 <input type="range" id="astroEcc" min="0" max="0.6" step="0.05" value="0.3" /> <span id="astroEccV">0.30</span></label>
+      <label>周期 <input type="range" id="astroPeriod" min="3" max="8" step="0.5" value="5" /> <span id="astroPeriodV">5 s</span></label>
+      <label>点火增量 <input type="range" id="astroBurn" min="0" max="80" step="5" value="0" /> <span id="astroBurnV">0 px/s</span></label>
+      <button class="btn small" id="btnAstroPlay" type="button">▶ 轨道</button>
+      <button class="btn ghost small" id="btnAstroExport" type="button">导出轨道 JSON</button>
+    </div>
+    <p id="astroChecks" role="status"></p>
+    <textarea id="astroBox" spellcheck="false" aria-label="轨道 JSON"></textarea>
   </section>
 
   <!-- 三个问题 -->
@@ -302,7 +426,7 @@
           <li><b>AI</b> 把句子翻译成时间线草稿，并用人话解释参数。你说「不够重」，它只改数 —— 拉长蓄力、加命中停顿、加重落地缓冲 —— 不重画一遍。</li>
           <li><b>工具</b>负责画出来、报犯规、锁定版本。你点头的那一版导出存档，谁都不许再改。</li>
         </ul>
-        <p class="verdict">上面的一句话输入框就是这个配合的最小形态：关键词 → 预设 + 参数，每处改动都写明改了什么、为什么。</p>
+        <p class="verdict">上面的一句话输入框就是这个配合的最小形态：句子 → MotionSpec 导演稿 → motionlab-0.1 编译结果，每处改动都写明改了什么、为什么。</p>
       </article>
     </div>
 
@@ -393,7 +517,7 @@ var PRESETS = {
 var state = {
   preset:"leap",
   params:{},
-  t:0, playing:false, lastTs:0, shake:0, wasImpact:false
+  t:0, playing:false, lastTs:0, shake:0, wasImpact:false, camZoom:1
 };
 Object.keys(PRESETS).forEach(function(k){
   state.params[k]={};
@@ -604,7 +728,7 @@ function drawFigure(pose, color, opts){
 function render(){
   var TL=buildTimeline();
   var t=clamp(state.t,0,TL.duration);
-  var pose=poseAt(t);
+  var pose=sceneOverridePose||poseAt(t);
   ctx.clearRect(0,0,W,H);
   // stage bg
   var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#1d2026"); g.addColorStop(1,"#121317");
@@ -612,6 +736,23 @@ function render(){
   // shake
   ctx.save();
   if(state.shake>0.2 && $("tgShake").checked){ ctx.translate((Math.random()-0.5)*state.shake,(Math.random()-0.5)*state.shake*0.6); }
+  // camera: rendering layer only, pose(t) is untouched
+  var camMode=$("camMode")?$("camMode").value:"static";
+  var targetZoom=1;
+  if(camMode==="impact"){
+    var inHit=TL.phases.some(function(ph){ return (ph.name==="命中停顿"||ph.name==="停顿") && t>=ph.start && t<ph.end; });
+    if(inHit) targetZoom=1.28;
+  }
+  state.camZoom=lerp(state.camZoom||1, targetZoom, 0.12);
+  if(camMode==="impact" || Math.abs(state.camZoom-1)>0.01){
+    var fx=pose.main.pelvis.x, fy=pose.main.pelvis.y;
+    if(camMode==="impact" && pose.target){ fx=(pose.main.handR.x+pose.target.chest.x)/2; fy=(pose.main.handR.y+pose.target.chest.y)/2; }
+    ctx.translate(fx,fy); ctx.scale(state.camZoom,state.camZoom); ctx.translate(-fx,-fy);
+  } else if(camMode==="follow"){
+    ctx.translate(-clamp(pose.main.pelvis.x-W/2,-140,140),0);
+  } else if(camMode==="pan"){
+    ctx.translate(-lerp(-90,90,TL.duration? t/TL.duration:0),0);
+  }
   // grid
   ctx.strokeStyle="rgba(255,255,255,0.055)"; ctx.lineWidth=1;
   for(var x=0;x<=W;x+=50){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,GROUND); ctx.stroke(); }
@@ -699,48 +840,127 @@ function render(){
 
 /* ---------- checks (sampled measurement) ---------- */
 function runChecks(){
-  var TL=buildTimeline(), N=Math.max(2,Math.round(TL.duration*FPS));
-  var maxDev=0, outOfFrame=0, footSlideMax=0, prev=null;
-  var contactPhases = state.preset==="leap" ? ["待机","蓄力下蹲","缓冲回稳"] : ["待机","前摇","待机"];
-  function phaseNameAt(tt){ var p=TL.phases.filter(function(x){return tt>=x.start&&tt<x.end;})[0]; return p?p.name:""; }
-  for(var i=0;i<=N;i++){
-    var t=i/FPS, pose=poseAt(t), m=pose.main;
-    // bone length deviation
-    function d(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
-    var devs=[Math.abs(d(m.pelvis,m.chest)-SEG.torso),Math.abs(d(m.shoulderR,m.elbowR)-SEG.upperArm),Math.abs(d(m.elbowR,m.handR)-SEG.forearm),Math.abs(d(m.hipR,m.kneeR)-SEG.thigh),Math.abs(d(m.kneeR,m.footR)-SEG.shin)];
-    devs.forEach(function(v){ if(v>maxDev)maxDev=v; });
-    RIG_NODES.forEach(function(n){ var p=m[n]; if(p&&(p.x<8||p.x>W-8||p.y<8)) outOfFrame++; });
-    if(prev && contactPhases.indexOf(phaseNameAt(t))>=0){
-      [ "footR","footL" ].forEach(function(fn){
-        if(Math.abs(m[fn].y-GROUND)<7 && Math.abs(prev[fn].y-GROUND)<7){
-          var sl=Math.abs(m[fn].x-prev[fn].x); if(sl>footSlideMax)footSlideMax=sl;
-        }
-      });
-    }
-    prev=m;
-  }
-  var P=state.params[state.preset];
+  var c=computeChecks(), P=state.params[state.preset];
   var items=[];
-  items.push({ok:maxDev<0.6, title:"段长恒定 · 最大偏差 "+maxDev.toFixed(2)+" px", sub:"FK 骨架锁死每段长度。原版跳蚤复刻失败的第一名原因，就是腿在动的过程中变长变短。"});
-  items.push({ok:footSlideMax<3.2, warn:footSlideMax>=3.2&&footSlideMax<6, title:"脚底打滑 · 接触期最大 "+footSlideMax.toFixed(1)+" px/帧", sub:footSlideMax<3.2?"脚沾地时基本钉住，观众会觉得有重量。":"接触期脚在蹭地 —— 减小下蹲/收势时腿的角度变化，或放慢那一段。"});
-  items.push({ok:outOfFrame===0, warn:outOfFrame>0, title:outOfFrame===0?"全程不出画":"出画采样点 × "+outOfFrame, sub:"Still / Life 的规矩：全程整只在画面里，不靠推近和裁切藏动作范围。"});
+  function add(ok, warn, title, sub){ items.push({ok:ok, warn:warn, title:title, sub:sub}); }
+  add(c.main.boneLengthMaxDeviationPx<0.6, false, "段长恒定 · 主角最大偏差 "+c.main.boneLengthMaxDeviationPx.toFixed(2)+" px", "FK 骨架锁死每段长度。原版跳蚤复刻失败的第一名原因，就是腿在动的过程中变长变短。");
+  add(c.main.footSlideMaxPxPerFrame<3.2, c.main.footSlideMaxPxPerFrame>=3.2&&c.main.footSlideMaxPxPerFrame<6, "脚底打滑 · 主角接触期最大 "+c.main.footSlideMaxPxPerFrame.toFixed(1)+" px/帧", c.main.footSlideMaxPxPerFrame<3.2?"脚沾地时基本钉住，观众会觉得有重量。":"接触期脚在蹭地 —— 减小下蹲/收势时腿的角度变化，或放慢那一段。");
+  add(c.main.outOfFrameSamples===0, c.main.outOfFrameSamples>0, c.main.outOfFrameSamples===0?"全程不出画":"出画采样点 × "+c.main.outOfFrameSamples, "Still / Life 的规矩：全程整只在画面里，不靠推近和裁切藏动作范围。");
+  if(c.opponent){
+    add(c.opponent.boneLengthMaxDeviationPx<0.6, false, "段长恒定 · 对手最大偏差 "+c.opponent.boneLengthMaxDeviationPx.toFixed(2)+" px", "对手用同一套段长校验，导出后 Claw 侧也能对账。");
+    add(c.opponent.footSlideMaxPxPerFrame<3.2, c.opponent.footSlideMaxPxPerFrame>=3.2&&c.opponent.footSlideMaxPxPerFrame<6, "脚底打滑 · 对手打击前最大 "+c.opponent.footSlideMaxPxPerFrame.toFixed(1)+" px/帧", "对手打击后位移是击退，不计入脚滑，单独记在导出 JSON 的 pelvisMaxDisplacementPx 里。");
+    add(c.opponent.outOfFrameSamples===0, c.opponent.outOfFrameSamples>0, c.opponent.outOfFrameSamples===0?"对手全程不出画":"对手出画采样点 × "+c.opponent.outOfFrameSamples, "对手被击退后也不能出画，否则成片里会穿帮。");
+  }
   if(state.preset==="leap"){
-    var ratio=P.charge/ (P.charge+0.78);
-    items.push({ok:ratio>0.42, warn:ratio<=0.42, title:"蓄力占比 "+Math.round(ratio*100)+"%（蓄力 / 蓄力+滞空）", sub:ratio>0.42?"蓄力比飞行还久 —— 对的，生命感是攒出来的。":"蓄力太短，跳会像被弹射。把蓄力时长拉到 0.9s 以上再看。"});
-    items.push({ok:P.buffer>0.25, warn:P.buffer<=0.25, title:"落地缓冲 "+Math.round(P.buffer*100)+"%", sub:P.buffer>0.25?"落地有下沉回弹，不是贴纸落回纸面。":"缓冲接近 0 = 硬着陆，跳蚤会当场「死」给你看。"});
+    add(c.presetMetrics.chargeRatioPass, !c.presetMetrics.chargeRatioPass, "蓄力占比 "+Math.round(c.presetMetrics.chargeRatio*100)+"%（蓄力 / 蓄力+滞空）", c.presetMetrics.chargeRatioPass?"蓄力比飞行还久 —— 对的，生命感是攒出来的。":"蓄力太短，跳会像被弹射。把蓄力时长拉到 0.9s 以上再看。");
+    add(c.presetMetrics.bufferPass, !c.presetMetrics.bufferPass, "落地缓冲 "+Math.round(P.buffer*100)+"%", c.presetMetrics.bufferPass?"落地有下沉回弹，不是贴纸落回纸面。":"缓冲接近 0 = 硬着陆，跳蚤会当场「死」给你看。");
   }
   if(state.preset==="punch"||state.preset==="slash"){
-    var hs=state.params[state.preset].hitstop;
-    items.push({ok:hs>=3, warn:hs<3, title:"命中停顿 "+hs+" 帧", sub:hs>=3?"命中瞬间全场冻结，重量成立。":"停顿不足 3 帧，打击像摸到不是打中 —— 格斗游戏最忌这个。"});
-    var rec=state.params[state.preset].recover;
-    items.push({ok:rec>=0.35, warn:rec<0.35, title:"后摇 "+rec.toFixed(2)+"s（"+Math.round(rec*FPS)+" 帧）", sub:"后摇是重量的收据，也是留给对手的破绽。复刻战斗时这一项要和原作逐帧对。"});
+    add(c.presetMetrics.hitstopPass, !c.presetMetrics.hitstopPass, "命中停顿 "+P.hitstop+" 帧", c.presetMetrics.hitstopPass?"命中瞬间全场冻结，重量成立。":"停顿不足 3 帧，打击像摸到不是打中 —— 格斗游戏最忌这个。");
+    add(c.presetMetrics.recoverPass, !c.presetMetrics.recoverPass, "后摇 "+P.recover.toFixed(2)+"s（"+Math.round(P.recover*FPS)+" 帧）", "后摇是重量的收据，也是留给对手的破绽。复刻战斗时这一项要和原作逐帧对。");
+    if(c.impactAlignment.impact) add(c.impactAlignment.impact.aligned, !c.impactAlignment.impact.aligned, "打击帧对齐 · 打击在第 "+c.impactAlignment.impact.frame+" 帧，停顿从该帧开始", c.impactAlignment.impact.aligned?"打击帧、停顿起始帧、导出事件三处一致。":"打击帧和停顿起始帧对不上，导出给 Claw 的事件会错位。");
   }
   $("checkList").innerHTML=items.map(function(it){
     var cls=it.ok?"ok":(it.warn?"warn":"warn");
     var ic=it.ok?"✓":"!";
     return '<li><span class="ic '+cls+'">'+ic+'</span><span>'+it.title+"<small>"+it.sub+"</small></span></li>";
   }).join("");
-  return {maxDev:+maxDev.toFixed(2), footSlide:+footSlideMax.toFixed(1), outOfFrame:outOfFrame};
+  return c;
+}
+
+
+/* ---------- critic: checks -> param repairs, max 3 rounds ---------- */
+/* Only checks with a known, verifiable param mapping get a repair.
+   Bone length, foot slide and impact alignment are solver-internal:
+   inventing a param for them would lie about the fix, so they are
+   reported as unrepairable and left alone. */
+function criticParamDef(key){
+  var defs=PRESETS[state.preset].params;
+  for(var i=0;i<defs.length;i++){ if(defs[i].key===key) return defs[i]; }
+  return null;
+}
+function clampParam(key, v){
+  var d=criticParamDef(key); if(!d) return v;
+  var nv=clamp(v, d.min, d.max);
+  return d.step>=1 ? Math.round(nv) : Math.round(nv*100)/100;
+}
+function criticSuggestions(c){
+  var P=state.params[state.preset], out=[];
+  function push(check, param, to, reason){
+    var d=criticParamDef(param); if(!d) return;
+    var nv=clampParam(param, to);
+    if(nv!==P[param]) out.push({check:check, param:param, from:P[param], to:nv, reason:reason});
+  }
+  if(state.preset==="leap"){
+    if(!c.presetMetrics.chargeRatioPass) push("蓄力占比", "charge", Math.max(P.charge, 0.9), "蓄力占比要 >42%，0.9s 起步才稳，目标是蓄力比飞行久。");
+    if(!c.presetMetrics.bufferPass) push("落地缓冲", "buffer", Math.max(P.buffer, 0.4), "缓冲要 >25%，0.4 起步，落地才不是硬着陆。");
+    if(c.main.outOfFrameSamples>0){
+      push("主角出画", "dist", P.dist*0.85, "落点收 15%，先让整只回到画面里，再谈跳多远。");
+      push("主角出画", "height", P.height*0.85, "顶点收 15%，先让整只回到画面里，再谈跳多高。");
+    }
+  }
+  if(state.preset==="punch" || state.preset==="slash"){
+    if(!c.presetMetrics.hitstopPass) push("命中停顿", "hitstop", Math.max(P.hitstop, 4), "停顿要 >=3 帧，4 帧起步，重量才成立。");
+    if(!c.presetMetrics.recoverPass) push("后摇", "recover", Math.max(P.recover, 0.45), "后摇要 >=0.35s，0.45s 起步，后摇是重量的收据。");
+    if(c.opponent && c.opponent.outOfFrameSamples>0) push("对手出画", "power", P.power*0.8, "击退收 20%，对手被送出画就是穿帮，先收回来。");
+  }
+  return out;
+}
+function criticFailingNames(c){
+  var names=[];
+  if(c.main.boneLengthMaxDeviationPx>=0.6) names.push("段长偏差（求解器问题，参数修不了）");
+  if(c.main.footSlideMaxPxPerFrame>=3.2) names.push("主角脚滑（求解器问题，参数修不了）");
+  if(c.main.outOfFrameSamples>0) names.push("主角出画");
+  if(c.opponent){
+    if(c.opponent.boneLengthMaxDeviationPx>=0.6) names.push("对手段长偏差（求解器问题，参数修不了）");
+    if(c.opponent.footSlideMaxPxPerFrame>=3.2) names.push("对手脚滑（求解器问题，参数修不了）");
+    if(c.opponent.outOfFrameSamples>0) names.push("对手出画");
+  }
+  if(state.preset==="leap"){
+    if(!c.presetMetrics.chargeRatioPass) names.push("蓄力占比");
+    if(!c.presetMetrics.bufferPass) names.push("落地缓冲");
+  }
+  if(state.preset==="punch" || state.preset==="slash"){
+    if(!c.presetMetrics.hitstopPass) names.push("命中停顿");
+    if(!c.presetMetrics.recoverPass) names.push("后摇");
+  }
+  if(c.impactAlignment.impact && c.impactAlignment.impact.aligned===false) names.push("打击帧对齐（求解器问题，参数修不了）");
+  if(c.impactAlignment.impact2 && c.impactAlignment.impact2.aligned===false) names.push("第二打击帧对齐（求解器问题，参数修不了）");
+  return names;
+}
+var criticUndo=null;
+function applyCritic(){
+  var P=state.params[state.preset];
+  var before=JSON.parse(JSON.stringify(P));
+  var beforePass=computeChecks().pass;
+  var applied=[], rounds=0, stuck=false;
+  for(var r=0;r<3;r++){
+    var c=computeChecks();
+    if(c.pass) break;
+    var sug=criticSuggestions(c);
+    if(!sug.length){ stuck=true; break; }
+    var changed=false;
+    sug.forEach(function(s){
+      if(P[s.param]!==s.to){ P[s.param]=s.to; changed=true; applied.push({round:r+1, check:s.check, param:s.param, from:s.from, to:s.to, reason:s.reason}); }
+    });
+    rounds=r+1;
+    if(!changed){ stuck=true; break; }
+  }
+  var after=computeChecks();
+  criticUndo=applied.length?before:null;
+  return {beforePass:beforePass, afterPass:after.pass, rounds:rounds,
+    applied:applied, stuck:stuck, remaining:criticFailingNames(after)};
+}
+function renderCriticMsg(res){
+  if(!res.applied.length){
+    $("criticMsg").textContent=res.afterPass?"校验已通过，不用修。":"校验未通过，但没有可修的参数（多半是求解器问题），这次不动参数。剩余："+res.remaining.join("、");
+    return;
+  }
+  var txt="修复 "+res.rounds+" 轮，改了 "+res.applied.length+" 处："+
+    res.applied.map(function(a){ return a.check+"："+a.param+" "+a.from+" → "+a.to; }).join("；")+"。";
+  txt+=res.afterPass?"修复后校验通过。":"修复后仍未通过，剩余："+res.remaining.join("、")+"。";
+  txt+="不满意点“撤销修复”回到修之前，修完记得点“生成当前 Spec”再存库。";
+  $("criticMsg").textContent=txt;
 }
 
 /* ---------- frame data ---------- */
@@ -806,42 +1026,201 @@ function renderPhaseBar(){
 }
 
 /* ---------- JSON export / import ---------- */
+/* ---------- motionlab-0.1: self-contained export ---------- */
+/* Frame times: every 60fps frame strictly below duration, plus the exact
+   final frame at duration. Exported tracks, events and checks all use
+   these same frames, so they describe one identical clip. */
+function frameTimes(TL){
+  var ts=[], i=0;
+  while(i/FPS < TL.duration - 1e-9){ ts.push(i/FPS); i++; }
+  ts.push(TL.duration);
+  return ts;
+}
+function r1(v){ return Math.round(v*10)/10; }
+function jointsOf(pose){
+  var o={};
+  RIG_NODES.forEach(function(n){ var pt=pose[n]; o[n]=pt?[r1(pt.x),r1(pt.y)]:null; });
+  return o;
+}
+function sampleTracks(){
+  var TL=buildTimeline(), ts=frameTimes(TL);
+  var main=[], opp=[], prop=[];
+  ts.forEach(function(tt, idx){
+    var pose=poseAt(tt);
+    main.push({f:idx, t:+tt.toFixed(3), joints:jointsOf(pose.main)});
+    opp.push(pose.target?{f:idx, t:+tt.toFixed(3), joints:jointsOf(pose.target)}:null);
+    prop.push(pose.prop?{f:idx, t:+tt.toFixed(3), from:[r1(pose.prop.from.x),r1(pose.prop.from.y)], to:[r1(pose.prop.to.x),r1(pose.prop.to.y)]}:null);
+  });
+  var hasOpp=opp.some(function(x){ return x!==null; });
+  var hasProp=prop.some(function(x){ return x!==null; });
+  return {times:ts, main:main, opponent:hasOpp?opp:null, prop:hasProp?prop:null, TL:TL};
+}
+function buildEvents(TL){
+  var ev=[];
+  function add(tt, type, phase){ ev.push({t:+tt.toFixed(3), frame:Math.round(tt*FPS), type:type, phase:phase||null}); }
+  /* Phase starts, kept in their original form (type = phase name) for
+     backward compatibility with v1 readers. */
+  TL.phases.forEach(function(ph){ add(ph.start, ph.name, ph.name); });
+  /* Semantic events on top: audio, camera and Claw can hook these
+     instead of frame numbers. impact / impact-2 keep their v1 types. */
+  if(state.preset==="leap"){
+    add(TL.phases[1].start, "charge-start", "蓄力下蹲");
+    add(TL.impact, "takeoff", "滞空");
+    add(TL.phases[3].start, "landing", "落地");
+    add(TL.phases[4].start, "settle-start", "缓冲回稳");
+    add(TL.impact, "impact", "滞空");
+  } else if(state.preset==="punch"){
+    add(TL.phases[1].start, "windup-start", "前摇");
+    add(TL.phases[2].start, "strike-start", "出拳");
+    add(TL.impact, "impact", "出拳");
+    add(TL.phases[3].start, "hitstop-start", "命中停顿");
+    add(TL.phases[3].end, "hitstop-end", "命中停顿");
+    add(TL.phases[4].start, "recover-start", "后摇");
+  } else {
+    add(TL.phases[1].start, "windup-start", "起手");
+    add(TL.phases[2].start, "slash-1-start", "第一斩");
+    add(TL.impact, "impact", "第一斩");
+    add(TL.phases[3].start, "hitstop-1-start", "停顿");
+    add(TL.phases[3].end, "hitstop-1-end", "停顿");
+    add(TL.phases[5].start, "slash-2-start", "第二斩");
+    add(TL.impact2, "impact-2", "第二斩");
+    add(TL.phases[6].start, "hitstop-2-start", "停顿");
+    add(TL.phases[6].end, "hitstop-2-end", "停顿");
+    add(TL.phases[7].start, "recover-start", "收剑");
+  }
+  ev.sort(function(a,b){ return a.t-b.t || (a.type<b.type?-1:1); });
+  return ev;
+}
+function computeChecks(){
+  var TL=buildTimeline(), ts=frameTimes(TL);
+  function charChecks(getPose, contactFn){
+    var segs={torso:0, upperArm:0, forearm:0, thigh:0, shin:0, upperArmL:0, forearmL:0, thighL:0, shinL:0, head:0};
+    var out=0, outNodes={}, footMax=0, prev=null;
+    var comMinX=1e9, comMaxX=-1e9, comMinY=1e9, comMaxY=-1e9, pelvisStartX=null, pelvisMaxDx=0;
+    function d(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+    ts.forEach(function(tt){
+      var m=getPose(tt);
+      if(!m) return;
+      if(pelvisStartX===null) pelvisStartX=m.pelvis.x;
+      pelvisMaxDx=Math.max(pelvisMaxDx, Math.abs(m.pelvis.x-pelvisStartX));
+      var dev={
+        torso:Math.abs(d(m.pelvis,m.chest)-SEG.torso),
+        upperArm:Math.abs(d(m.shoulderR,m.elbowR)-SEG.upperArm),
+        forearm:Math.abs(d(m.elbowR,m.handR)-SEG.forearm),
+        thigh:Math.abs(d(m.hipR,m.kneeR)-SEG.thigh),
+        shin:Math.abs(d(m.kneeR,m.footR)-SEG.shin),
+        upperArmL:Math.abs(d(m.shoulderL,m.elbowL)-SEG.upperArm),
+        forearmL:Math.abs(d(m.elbowL,m.handL)-SEG.forearm),
+        thighL:Math.abs(d(m.hipL,m.kneeL)-SEG.thigh),
+        shinL:Math.abs(d(m.kneeL,m.footL)-SEG.shin),
+        head:Math.abs(d(m.chest,m.head)-(SEG.neck+13))
+      };
+      Object.keys(dev).forEach(function(k){ if(dev[k]>segs[k]) segs[k]=dev[k]; });
+      RIG_NODES.forEach(function(n){ var pt=m[n]; if(pt&&(pt.x<8||pt.x>W-8||pt.y<8||pt.y>H-8)){ out++; outNodes[n]=(outNodes[n]||0)+1; } });
+      var comX=(m.pelvis.x+m.chest.x)/2, comY=(m.pelvis.y+m.chest.y)/2;
+      comMinX=Math.min(comMinX,comX); comMaxX=Math.max(comMaxX,comX);
+      comMinY=Math.min(comMinY,comY); comMaxY=Math.max(comMaxY,comY);
+      if(prev && contactFn(tt)){
+        ["footR","footL"].forEach(function(fn){
+          if(Math.abs(m[fn].y-GROUND)<7 && Math.abs(prev[fn].y-GROUND)<7){
+            var sl=Math.abs(m[fn].x-prev[fn].x); if(sl>footMax) footMax=sl;
+          }
+        });
+      }
+      prev=m;
+    });
+    Object.keys(segs).forEach(function(k){ segs[k]=+segs[k].toFixed(2); });
+    var maxDev=Math.max(segs.torso,segs.upperArm,segs.forearm,segs.thigh,segs.shin,segs.upperArmL,segs.forearmL,segs.thighL,segs.shinL,segs.head);
+    return {
+      boneLengthMaxDeviationPx:+maxDev.toFixed(2),
+      boneLengthBySegmentPx:segs,
+      footSlideMaxPxPerFrame:+footMax.toFixed(2),
+      outOfFrameSamples:out,
+      outOfFrameByNode:outNodes,
+      centerOfMassRangePx:{x:[+comMinX.toFixed(1),+comMaxX.toFixed(1)], y:[+comMinY.toFixed(1),+comMaxY.toFixed(1)], note:"midpoint of pelvis and chest, same definition as the stage COM marker"},
+      pelvisMaxDisplacementPx:+pelvisMaxDx.toFixed(1)
+    };
+  }
+  var landingStart=null;
+  TL.phases.forEach(function(ph){ if(ph.name==="落地") landingStart=ph.start; });
+  function mainContact(tt){
+    if(state.preset==="leap") return tt < TL.impact || (landingStart!==null && tt >= landingStart);
+    return true;
+  }
+  function oppContact(tt){ return tt < TL.impact; }
+  var mainC=charChecks(function(tt){ return poseAt(tt).main; }, mainContact);
+  var hasOpp=(state.preset==="punch" || state.preset==="slash");
+  var oppC=hasOpp ? charChecks(function(tt){ return poseAt(tt).target; }, oppContact) : null;
+  var P=state.params[state.preset], presetMetrics={};
+  if(state.preset==="leap"){
+    presetMetrics.chargeRatio=+(P.charge/(P.charge+0.78)).toFixed(3);
+    presetMetrics.chargeRatioPass=presetMetrics.chargeRatio>0.42;
+    presetMetrics.buffer=P.buffer;
+    presetMetrics.bufferPass=P.buffer>0.25;
+  }
+  if(state.preset==="punch" || state.preset==="slash"){
+    presetMetrics.hitstopFrames=P.hitstop;
+    presetMetrics.hitstopPass=P.hitstop>=3;
+    presetMetrics.recoverSeconds=P.recover;
+    presetMetrics.recoverPass=P.recover>=0.35;
+    if(state.preset==="slash") presetMetrics.hitstop2Frames=P.hitstop+2;
+  }
+  function impactAligned(impactT, hitstopPhase){
+    if(impactT===undefined || impactT===null || !hitstopPhase) return null;
+    var frame=Math.round(impactT*FPS), frameT=ts[frame]!==undefined?ts[frame]:null;
+    var ok=frameT!==null && Math.abs(frameT-impactT)<1/FPS+0.001 && Math.abs(hitstopPhase.start-impactT)<0.001;
+    return {t:+impactT.toFixed(3), frame:frame, frameTime:frameT!==null?+frameT.toFixed(3):null, frameMatches:frameT!==null && Math.abs(frameT-impactT)<1/FPS+0.001, hitstopPhaseStartsAtImpact:Math.abs(hitstopPhase.start-impactT)<0.001, aligned:ok};
+  }
+  var hitstopPhases=TL.phases.filter(function(ph){ return ph.name==="命中停顿" || ph.name==="停顿"; });
+  var impacts={};
+  if(state.preset==="leap"){
+    impacts.impact={t:+TL.impact.toFixed(3), frame:Math.round(TL.impact*FPS), note:"takeoff"};
+  } else if(state.preset==="punch"){
+    impacts.impact=impactAligned(TL.impact, hitstopPhases[0]);
+  } else {
+    impacts.impact=impactAligned(TL.impact, hitstopPhases[0]);
+    impacts.impact2=impactAligned(TL.impact2, hitstopPhases[1]);
+  }
+  var pass=mainC.boneLengthMaxDeviationPx<0.6 && mainC.outOfFrameSamples===0 && mainC.footSlideMaxPxPerFrame<3.2;
+  if(oppC) pass=pass && oppC.boneLengthMaxDeviationPx<0.6 && oppC.outOfFrameSamples===0 && oppC.footSlideMaxPxPerFrame<3.2;
+  if(state.preset==="leap") pass=pass && presetMetrics.chargeRatioPass && presetMetrics.bufferPass;
+  if(state.preset==="punch" || state.preset==="slash") pass=pass && presetMetrics.hitstopPass && presetMetrics.recoverPass;
+  if(impacts.impact && impacts.impact.aligned===false) pass=false;
+  if(impacts.impact2 && impacts.impact2.aligned===false) pass=false;
+  return {
+    sampledFrames:ts.length, sampledAtFps:FPS, fps:FPS,
+    thresholds:{boneLengthMaxPx:0.6, footSlideMaxPxPerFrame:3.2, outOfFrameMax:0},
+    main:mainC, opponent:oppC, presetMetrics:presetMetrics, impactAlignment:impacts, pass:pass,
+    boneLengthMaxDeviationPx:mainC.boneLengthMaxDeviationPx,
+    footSlideMaxPxPerFrame:mainC.footSlideMaxPxPerFrame,
+    outOfFrameSamples:mainC.outOfFrameSamples
+  };
+}
 function buildJSON(){
-  var TL=buildTimeline(), P=state.params[state.preset];
+  var TL=buildTimeline(), P=state.params[state.preset], S=sampleTracks();
   var keyframes=[0,0.25,0.5,0.75,1].map(function(k){ return +(TL.duration*k).toFixed(3); });
-  // sample root track at phase boundaries + quarters, dedup
-  var times={}; TL.phases.forEach(function(p){ times[p.start.toFixed(3)]=1; times[p.end.toFixed(3)]=1; });
+  var times={}; TL.phases.forEach(function(ph){ times[ph.start.toFixed(3)]=1; times[ph.end.toFixed(3)]=1; });
   keyframes.forEach(function(x){ times[x]=1; });
   var ts=Object.keys(times).map(Number).sort(function(a,b){return a-b;});
   var rootTrack=ts.map(function(tt){ var pose=poseAt(clamp(tt,0,TL.duration)); return {t:+tt.toFixed(3), x:Math.round(pose.rootX), y:Math.round(pose.rootY)}; });
-  var events=TL.phases.map(function(p){ return {t:+p.start.toFixed(3), type:p.name}; });
-  events.push({t:+TL.impact.toFixed(3), type:"impact"});
-  if(TL.impact2) events.push({t:+TL.impact2.toFixed(3), type:"impact-2"});
-  events.sort(function(a,b){return a.t-b.t;});
-  var checks=runChecksSilent();
+  var checks=computeChecks();
   return {
     version:"motionlab-0.1",
     preset:state.preset,
     fps:FPS,
     duration:+TL.duration.toFixed(3),
-    rig:{ nodes:RIG_NODES, segments:SEG, note:"段长两边锁死；Claw 侧按节点名映射自己的关键节点" },
+    frameCount:S.main.length,
+    stage:{width:W, height:H, groundY:GROUND, units:"px, origin top-left, y down"},
+    rig:{ nodes:RIG_NODES, segments:SEG, headCenterOffsetPx:SEG.neck+13, note:"段长两边锁死；Claw 侧按节点名映射自己的关键节点。head 中心到 chest 的距离是 neck+13，不是 neck 本身。"},
     params:P,
-    phases:TL.phases.map(function(p){return {name:p.name,start:+p.start.toFixed(3),end:+p.end.toFixed(3)};}),
-    tracks:{ root:rootTrack },
-    events:events,
+    phases:TL.phases.map(function(ph){return {name:ph.name,start:+ph.start.toFixed(3),end:+ph.end.toFixed(3)};}),
+    tracks:{ root:rootTrack, main:S.main, opponent:S.opponent, prop:S.prop, jointsOrder:RIG_NODES, note:"main/opponent 是按 fps 逐帧的全部节点坐标（舞台 px，0.1 精度），顺序见 jointsOrder。播放这份轨迹不需要再实现预设逻辑；params 只用于在工具里调手感，不用于回放。opponent 为 null 表示本动作无对手，prop 为 null 表示无道具（剑只在二连斩里出现）。"},
+    camera:{mode:($("camMode")? $("camMode").value : "static"), note:"渲染层运镜，不影响 pose(t)；Claw 可忽略或按 mode 复现。"},
+    events:buildEvents(TL),
     checks:checks
   };
 }
-function runChecksSilent(){
-  // reuse last computed values without DOM churn: quick sample
-  var TL=buildTimeline(), maxDev=0;
-  for(var i=0;i<=Math.round(TL.duration*FPS);i+=3){
-    var m=poseAt(i/FPS).main;
-    function d(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-    var dev=Math.abs(d(m.pelvis,m.chest)-SEG.torso); if(dev>maxDev)maxDev=dev;
-  }
-  return { boneLengthMaxDeviationPx:+maxDev.toFixed(2), sampledAtFps:FPS };
-}
+function refreshJSON(){ $("jsonBox").value=JSON.stringify(buildJSON(),null,2); }
 function refreshJSON(){ $("jsonBox").value=JSON.stringify(buildJSON(),null,2); }
 function syncAll(refreshChecksToo){
   renderPhaseBar(); renderFrameData(); refreshJSON(); render();
@@ -882,12 +1261,14 @@ function parseSentence(txt){
 /* ---------- events ---------- */
 document.querySelectorAll(".presets button").forEach(function(btn){
   btn.addEventListener("click",function(){
+    if(scenePlaying) stopScene();
     state.preset=btn.getAttribute("data-preset"); state.t=0; state.playing=false; $("btnPlay").textContent="▶";
     document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b===btn?"true":"false"); });
     renderParams(); syncAll(true);
   });
 });
 $("btnPlay").addEventListener("click",function(){
+  if(scenePlaying) stopScene();
   state.playing=!state.playing;
   if(state.playing && state.t>=buildTimeline().duration-0.01) state.t=0;
   $("btnPlay").textContent=state.playing?"⏸":"▶";
@@ -896,6 +1277,12 @@ $("btnPrev").addEventListener("click",function(){ state.playing=false; $("btnPla
 $("btnNext").addEventListener("click",function(){ state.playing=false; $("btnPlay").textContent="▶"; state.t=clamp(state.t+1/FPS,0,buildTimeline().duration); render(); });
 $("scrub").addEventListener("input",function(e){ state.t=parseFloat(e.target.value)/1000*buildTimeline().duration; render(); });
 $("btnImpact").addEventListener("click",function(){ var TL=buildTimeline(); state.t=TL.impact; state.playing=false; $("btnPlay").textContent="▶"; render(); });
+$("btnCritic").addEventListener("click",function(){ var res=applyCritic(); renderParams(); renderCriticMsg(res); syncAll(true); });
+$("btnCriticUndo").addEventListener("click",function(){
+  if(!criticUndo){ $("criticMsg").textContent="没有可撤销的修复。"; return; }
+  state.params[state.preset]=criticUndo; criticUndo=null;
+  renderParams(); syncAll(true); $("criticMsg").textContent="已回到修复前的参数。";
+});
 ["tgOnion","tgTrail","tgCom","tgShake"].forEach(function(id){ $(id).addEventListener("change",render); });
 
 function applySentence(){
@@ -906,8 +1293,18 @@ function applySentence(){
     document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===r.preset?"true":"false"); });
     renderParams();
   }
+  var oldParams={};
+  PRESETS[r.preset].params.forEach(function(pp){ oldParams[pp.key]=state.params[r.preset][pp.key]; });
   Object.keys(r.mods).forEach(function(k){ state.params[r.preset][k]=r.mods[k]; });
   renderParams(); state.t=0; syncAll(true);
+  lastIntent=txt;
+  lastChanges=Object.keys(r.mods).map(function(k){
+    var def=PRESETS[r.preset].params.filter(function(pp){ return pp.key===k; })[0];
+    var note=r.notes.filter(function(n){ return def && n[0].indexOf(def.label)===0; })[0];
+    return {param:k, label:def?def.label:k, from:oldParams[k], to:r.mods[k], reason:note?note[1]:""};
+  });
+  $("specName").value=PRESETS[r.preset].label+" · "+txt.slice(0,14);
+  refreshSpecBox();
   var note=$("parseNote");
   var presetName=PRESETS[r.preset].label;
   if(r.notes.length===0){ note.innerHTML="已切到「"+presetName+"」，但这句话里没解析出可落地的参数 —— 试着写明：远 / 高 / 重 / 快 / 缓冲 / 停顿。AI 翻译的边界就在这里：含糊的句子只配含糊的结果。"; }
@@ -918,6 +1315,59 @@ function applySentence(){
   state.playing=true; $("btnPlay").textContent="⏸";
 }
 $("btnParse").addEventListener("click",applySentence);
+/* ---------- AI: in-page Deepseek -> MotionSpec (client-side only) ---------- */
+function aiParamRanges(){
+  var out={};
+  Object.keys(PRESETS).forEach(function(k){
+    out[k]={}; PRESETS[k].params.forEach(function(p){ out[k][p.key]=[p.min,p.max]; });
+  });
+  return out;
+}
+function aiExtractJSON(text){
+  var t=text.replace(/^```[a-zA-Z]*\n?/,"").replace(/```$/,"").trim();
+  try{ return JSON.parse(t); }catch(e){}
+  var a=t.indexOf("{"), b=t.lastIndexOf("}");
+  if(a>=0 && b>a) return JSON.parse(t.slice(a,b+1));
+  throw new Error("AI 返回里没有可解析的 JSON");
+}
+async function generateSpecWithAI(){
+  var msg=$("aiMsg");
+  var key=$("aiKey").value.trim();
+  if(!key){ msg.textContent="先填 Deepseek API Key（上面密码框），填完点“AI 生成 Spec”才会联网。Key 只存本机，不发给 Muse。"; return; }
+  try{ localStorage.setItem("motionlab-deepseek-key", key); }catch(e){}
+  var sentence=$("sentenceInput").value.trim();
+  if(!sentence){ msg.textContent="先写一句话意图，再点 AI 生成。"; return; }
+  msg.textContent="AI 正在翻译意图……";
+  var system="你是动作导演翻译，只输出一份 motionspec-0.1 JSON，不输出任何解释。字段：version 必须是 motionspec-0.1；preset 只能是 leap / punch / slash 三选一；params 只能用该预设的参数，范围见下，超出范围会被 clamp；intent 写用户原句；changes 是数组，每项 param / label / from / to / reason，from 用下面给的当前默认值；assumptions 写没说清就按默认算的假设；tags 写 2-4 个短标签；source 写 ai。参数范围（min,max）："+JSON.stringify(aiParamRanges())+"。当前各预设默认值："+JSON.stringify(state.params)+"。";
+  try{
+    var res=await fetch("https://api.deepseek.com/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:$("aiModel").value.trim()||"deepseek-v4-flash",
+        messages:[{role:"system",content:system},{role:"user",content:sentence}],
+        reasoning_effort:$("aiReasoning").value, temperature:0.3})
+    });
+    var data=await res.json();
+    if(!res.ok) throw new Error((data.error && data.error.message) ? data.error.message : ("HTTP "+res.status));
+    var content=data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if(!content) throw new Error("AI 返回为空");
+    var spec=aiExtractJSON(content);
+    var v=validateSpec(spec);
+    if(v.errors.length){ msg.textContent="AI 生成的 Spec 没通过校验，未应用："+v.errors.join("；"); return; }
+    applySpec(spec);
+    $("specBox").value=JSON.stringify(spec,null,2);
+    renderParams(); syncAll(true); state.playing=true; $("btnPlay").textContent="⏸";
+    msg.textContent="AI 已生成 Spec 并应用到舞台"+(v.warnings.length?"（警告："+v.warnings.join("；")+"）":"")+"。先看一遍手感，满意再点“生成当前 Spec”/“保存到动作库”锁定。";
+  }catch(e){
+    msg.textContent="AI 生成失败："+e.message+"（Key 不会出现在导出或日志里）";
+  }
+}
+$("btnAI").addEventListener("click",generateSpecWithAI);
+$("btnAIClear").addEventListener("click",function(){
+  try{ localStorage.removeItem("motionlab-deepseek-key"); }catch(e){}
+  $("aiKey").value=""; $("aiMsg").textContent="本机 Key 已清除。";
+});
+try{ var savedKey=localStorage.getItem("motionlab-deepseek-key"); if(savedKey) $("aiKey").value=savedKey; }catch(e){}
 $("sentenceInput").addEventListener("keydown",function(e){ if(e.key==="Enter") applySentence(); });
 document.querySelectorAll(".examples button").forEach(function(b){
   b.addEventListener("click",function(){ $("sentenceInput").value=b.getAttribute("data-sentence"); applySentence(); });
@@ -939,26 +1389,769 @@ $("btnDownload").addEventListener("click",function(){
   $("jsonMsg").textContent="已下载 motionlab-"+state.preset+"-0.1.json。";
 });
 $("btnImport").addEventListener("click",function(){
+  function normalizeJoints(j){
+    if(Array.isArray(j)){
+      if(j.length!==RIG_NODES.length*2) return null;
+      var o={}; RIG_NODES.forEach(function(n,i){ o[n]=[j[i*2],j[i*2+1]]; }); return o;
+    }
+    if(j && typeof j==="object"){
+      var ok=true;
+      RIG_NODES.forEach(function(n){ if(!Array.isArray(j[n])||j[n].length!==2||!isFinite(j[n][0])||!isFinite(j[n][1])) ok=false; });
+      return ok?j:null;
+    }
+    return null;
+  }
+  function compareTracks(imported, expected, label, warnings){
+    if(!imported || !Array.isArray(imported)){ warnings.push(label+"缺失或不是数组"); return 999; }
+    if(imported.length!==expected.length) warnings.push(label+"帧数不一致：导入 "+imported.length+" 帧，当前参数应为 "+expected.length+" 帧");
+    var maxDiff=0, bad=0, n=Math.min(imported.length, expected.length);
+    for(var i=0;i<n;i++){
+      var imp=imported[i], exp=expected[i];
+      if(!imp || !exp || Math.abs(imp.t-exp.t)>0.002){ bad++; continue; }
+      var joints=normalizeJoints(imp.joints);
+      if(!joints){ bad++; continue; }
+      RIG_NODES.forEach(function(node){
+        var a=joints[node], b=exp.joints[node];
+        var dd=Math.max(Math.abs(a[0]-b[0]), Math.abs(a[1]-b[1]));
+        if(dd>maxDiff) maxDiff=dd;
+      });
+    }
+    if(bad>0) warnings.push(label+"有 "+bad+" 帧时间或关节格式对不上");
+    if(maxDiff>1) warnings.push(label+"与参数重算结果最大偏差 "+maxDiff.toFixed(1)+" px（>1 px），播放以参数为准");
+    return maxDiff;
+  }
   try{
     var obj=JSON.parse($("jsonBox").value);
     if(obj.version!=="motionlab-0.1") throw new Error("版本不是 motionlab-0.1");
     if(!PRESETS[obj.preset]) throw new Error("未知预设 "+obj.preset);
+    if(obj.rig){
+      var nodesOk=obj.rig.nodes && obj.rig.nodes.join(",")===RIG_NODES.join(",");
+      var segsOk=obj.rig.segments && Object.keys(SEG).every(function(k){ return obj.rig.segments[k]===SEG[k]; });
+      if(!nodesOk || !segsOk) throw new Error("骨架与当前工具不一致（节点或段长不符）");
+    }
+    if(obj.fps && obj.fps!==FPS) throw new Error("帧率不是 60，无法按帧对齐");
     state.preset=obj.preset;
     document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===obj.preset?"true":"false"); });
     var defs=PRESETS[obj.preset].params;
-    defs.forEach(function(p){ if(typeof obj.params[p.key]==="number") state.params[obj.preset][p.key]=clamp(obj.params[p.key],p.min,p.max); });
-    renderParams(); state.t=0; syncAll(true);
-    $("jsonMsg").textContent="导入成功：已恢复「"+PRESETS[obj.preset].label+"」的参数。";
+    defs.forEach(function(pp){ if(typeof obj.params[pp.key]==="number") state.params[obj.preset][pp.key]=clamp(obj.params[pp.key],pp.min,pp.max); });
+    renderParams(); state.t=0;
+    var warnings=[];
+    if(obj.tracks && obj.tracks.main){
+      var S=sampleTracks(), C=computeChecks();
+      compareTracks(obj.tracks.main, S.main, "主角轨迹", warnings);
+      if(state.preset==="punch" || state.preset==="slash"){
+        if(obj.tracks.opponent) compareTracks(obj.tracks.opponent, S.opponent, "对手轨迹", warnings);
+        else warnings.push("缺少对手轨迹");
+      } else if(obj.tracks.opponent){
+        warnings.push("起跳预设不应有对手轨迹，已忽略");
+      }
+      if(obj.checks && obj.checks.main && Math.abs(obj.checks.main.boneLengthMaxDeviationPx-C.main.boneLengthMaxDeviationPx)>0.5) warnings.push("校验快照与重算结果不一致（段长偏差差 >0.5 px）");
+    } else {
+      warnings.push("这是旧版导出（只有根节点轨迹），请重新导出以获得完整关节轨迹");
+    }
+    syncAll(true);
+    if(warnings.length) $("jsonMsg").textContent="导入完成（有提醒）：已恢复「"+PRESETS[obj.preset].label+"」的参数；"+warnings.join("；")+"。";
+    else $("jsonMsg").textContent="导入成功：已恢复「"+PRESETS[obj.preset].label+"」的参数，关节轨迹与参数重算一致。";
   }catch(e){ $("jsonMsg").textContent="导入失败："+e.message+"。其余内容没有被改动。"; }
 });
+/* ---------- MotionSpec (motionspec-0.1) + 动作库 ---------- */
+var SPEC_VERSION="motionspec-0.1", LIB_KEY="motionlab-library-v1";
+var lastIntent="", lastChanges=[];
+var libFallback=null;
+function seedSpecs(){
+  return [
+    {id:"seed-leap-flea", version:SPEC_VERSION, name:"跳蚤起跳 · 蓄力拉满", preset:"leap",
+     params:{charge:1.45, depth:0.6, height:130, dist:240, buffer:0.6},
+     intent:"蓄力跳得远一点，落地要有缓冲",
+     changes:[{param:"charge", label:"蓄力时长", from:1.05, to:1.45, reason:"蓄力是这类动作的命脉，先拉满再回头减"}],
+     assumptions:[], tags:["起跳","蓄力","Still/Life"], source:"seed"},
+    {id:"seed-punch-heavy", version:SPEC_VERSION, name:"重拳 · 停顿给足", preset:"punch",
+     params:{windup:0.45, strike:0.11, hitstop:9, recover:0.75, power:58},
+     intent:"一记重拳，命中停顿要狠，后摇慢一点",
+     changes:[{param:"hitstop", label:"命中停顿", from:6, to:9, reason:"「重」的第一杠杆是停顿，不是拳速"}],
+     assumptions:[], tags:["重拳","命中停顿","格斗"], source:"seed"},
+    {id:"seed-slash-rhythm", version:SPEC_VERSION, name:"二连斩 · 第一快第二重", preset:"slash",
+     params:{windup:0.4, gap:0.14, hitstop:7, recover:0.6, power:52},
+     intent:"拔剑二连斩，第一下快，第二下重",
+     changes:[{param:"gap", label:"两斩间隔", from:0.22, to:0.14, reason:"连段靠间隔抢拍"}],
+     assumptions:[], tags:["二连斩","连段","节奏差"], source:"seed"}
+  ];
+}
+function loadLibrary(){
+  try{
+    var raw=localStorage.getItem(LIB_KEY);
+    if(raw===null){ var seeds=seedSpecs(); saveLibrary(seeds); return seeds; }
+    var arr=JSON.parse(raw);
+    return Array.isArray(arr)?arr:[];
+  }catch(e){
+    if(libFallback) return libFallback;
+    libFallback=seedSpecs(); return libFallback;
+  }
+}
+function saveLibrary(list){
+  try{ localStorage.setItem(LIB_KEY, JSON.stringify(list)); }
+  catch(e){ libFallback=list; }
+}
+function buildSpec(opts){
+  opts=opts||{};
+  var paramsCopy={};
+  PRESETS[state.preset].params.forEach(function(pp){ paramsCopy[pp.key]=state.params[state.preset][pp.key]; });
+  return {
+    version:SPEC_VERSION,
+    name:opts.name||"",
+    preset:state.preset,
+    params:paramsCopy,
+    intent:opts.intent!==undefined?opts.intent:lastIntent,
+    changes:opts.changes!==undefined?opts.changes:lastChanges,
+    assumptions:opts.assumptions||[],
+    tags:opts.tags||[],
+    source:opts.source||"manual",
+    note:"Spec 是导演稿：只写预设、参数、意图与改动理由，角度由求解器从参数算出，不在 Spec 里。工具编译成 motionlab-0.1，Claw 只读编译结果。"
+  };
+}
+function refreshSpecBox(){
+  $("specBox").value=JSON.stringify(buildSpec({name:$("specName").value, tags:parseTags($("specTags").value)}), null, 2);
+}
+function parseTags(s){
+  return (s||"").split(/[,，、]/).map(function(x){ return x.trim(); }).filter(function(x){ return x; });
+}
+function validateSpec(obj){
+  var errors=[], warnings=[];
+  if(!obj || typeof obj!=="object") return {errors:["Spec 不是一个 JSON 对象"], warnings:warnings};
+  if(obj.version!==SPEC_VERSION) errors.push("版本不是 "+SPEC_VERSION);
+  if(!PRESETS[obj.preset]) errors.push("未知预设 "+obj.preset);
+  if(!obj.params || typeof obj.params!=="object") errors.push("缺少 params 对象");
+  if(errors.length) return {errors:errors, warnings:warnings};
+  var defs=PRESETS[obj.preset].params, known={};
+  defs.forEach(function(pp){ known[pp.key]=pp; if(obj.params[pp.key]===undefined) warnings.push("缺参数 "+pp.label+"，用默认值 "+pp.def+" 补齐"); });
+  Object.keys(obj.params).forEach(function(k){
+    if(!known[k]) warnings.push("未知参数 "+k+"，已忽略（向前兼容）");
+    else if(typeof obj.params[k]!=="number") warnings.push("参数 "+known[k].label+" 不是数字，已忽略");
+  });
+  if(obj.tags!==undefined && (!Array.isArray(obj.tags) || obj.tags.some(function(x){ return typeof x!=="string"; }))) warnings.push("tags 不是字符串数组，已忽略");
+  if(obj.intent!==undefined && typeof obj.intent!=="string") warnings.push("intent 不是字符串，已忽略");
+  if(obj.changes!==undefined && !Array.isArray(obj.changes)) warnings.push("changes 不是数组，已忽略");
+  return {errors:errors, warnings:warnings};
+}
+function normalizeSpec(obj){
+  var v=validateSpec(obj);
+  if(v.errors.length) throw new Error(v.errors.join("；"));
+  var paramsCopy={};
+  PRESETS[obj.preset].params.forEach(function(pp){
+    var raw=obj.params[pp.key];
+    paramsCopy[pp.key]=(typeof raw==="number")?clamp(raw, pp.min, pp.max):pp.def;
+  });
+  return {
+    id:obj.id||null, version:SPEC_VERSION, name:obj.name||"",
+    preset:obj.preset, params:paramsCopy,
+    intent:typeof obj.intent==="string"?obj.intent:"",
+    changes:Array.isArray(obj.changes)?obj.changes:[],
+    assumptions:Array.isArray(obj.assumptions)?obj.assumptions:[],
+    tags:Array.isArray(obj.tags)?obj.tags.filter(function(x){ return typeof x==="string"; }):[],
+    source:obj.source||"manual", warnings:v.warnings
+  };
+}
+function applySpec(obj){
+  var spec=normalizeSpec(obj);
+  var prevPreset=state.preset;
+  var diff=[];
+  PRESETS[spec.preset].params.forEach(function(pp){
+    var from=state.params[spec.preset][pp.key];
+    if(from!==spec.params[pp.key]) diff.push({param:pp.key, label:pp.label, from:from, to:spec.params[pp.key]});
+  });
+  state.preset=spec.preset;
+  document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===spec.preset?"true":"false"); });
+  PRESETS[spec.preset].params.forEach(function(pp){ state.params[spec.preset][pp.key]=spec.params[pp.key]; });
+  lastIntent=spec.intent; lastChanges=spec.changes;
+  $("specName").value=spec.name||"";
+  $("specTags").value=spec.tags.join(", ");
+  renderParams(); state.t=0; syncAll(true); refreshSpecBox();
+  return {spec:spec, diff:diff, presetChanged:prevPreset!==spec.preset};
+}
+function renderLibrary(){
+  var q=($("libSearch").value||"").trim().toLowerCase();
+  var list=loadLibrary();
+  var shown=list.filter(function(it){
+    if(!q) return true;
+    var hay=[it.name||"", (it.tags||[]).join(" "), it.intent||"", PRESETS[it.preset]?PRESETS[it.preset].label:"", it.preset||""].join(" ").toLowerCase();
+    return hay.indexOf(q)>=0;
+  });
+  if(!shown.length){ $("libList").innerHTML="<p style=\"color:var(--ink2)\">动作库为空或没有匹配项：先生成 Spec 再保存，或用种子示例开始。</p>"; return; }
+  $("libList").innerHTML=shown.map(function(it){
+    var paramsText=PRESETS[it.preset]?PRESETS[it.preset].params.map(function(pp){ return pp.label+" "+fmtVal(pp, it.params[pp.key]); }).join(" · "):"";
+    var tagsText=(it.tags||[]).map(function(tg){ return '<span class="tag">'+tg+'</span>'; }).join("");
+    return '<div class="libitem"><b>'+it.name+'</b> <span style="color:var(--ink2)">'+(PRESETS[it.preset]?PRESETS[it.preset].label:it.preset)+'</span><div class="meta">'+paramsText+'</div><div class="meta">'+(it.intent||"")+'</div><div>'+tagsText+'</div><div class="drow" style="margin:8px 0 0"><button class="btn small" type="button" data-lib-action="load" data-lib-id="'+it.id+'">载入</button><button class="btn ghost small" type="button" data-lib-action="delete" data-lib-id="'+it.id+'">删除</button></div></div>';
+  }).join("");
+}
+function saveCurrentToLibrary(){
+  var name=$("specName").value.trim();
+  if(!name){ $("specMsg").textContent="请先给这个动作起个名字，再保存到动作库。"; return; }
+  /* Save the Spec in the textbox when it is a valid Spec, otherwise save
+     the current stage. This avoids silently saving the wrong draft when
+     the user pasted a Spec from Muse chat and has not imported it yet. */
+  var spec=null;
+  try{
+    var pasted=JSON.parse($("specBox").value);
+    var norm=normalizeSpec(pasted);
+    norm.name=name; norm.tags=parseTags($("specTags").value).length?parseTags($("specTags").value):norm.tags;
+    spec=norm;
+  }catch(e){ spec=null; }
+  if(!spec) spec=buildSpec({name:name, tags:parseTags($("specTags").value), source:"manual"});
+  else spec.name=name;
+  var list=loadLibrary(), found=null;
+  list.forEach(function(it){ if(it.name===name) found=it; });
+  if(found){
+    spec.id=found.id; spec.source=found.source==="seed"?"seed":"manual";
+    list=list.map(function(it){ return it.name===name?spec:it; });
+    $("specMsg").textContent="已更新动作库里的「"+name+"」。";
+  } else {
+    spec.id="lib-"+Date.now()+"-"+Math.floor(Math.random()*10000);
+    list.push(spec);
+    $("specMsg").textContent="已保存到动作库「"+name+"」。下次搜名称或标签就能复用。";
+  }
+  saveLibrary(list); renderLibrary(); refreshSpecBox();
+}
+function loadFromLibrary(id){
+  var it=loadLibrary().filter(function(x){ return x.id===id; })[0];
+  if(!it){ $("specMsg").textContent="动作库里找不到这一条，可能已被删除。"; return; }
+  var r=applySpec(it);
+  $("specMsg").textContent="已载入「"+it.name+"」"+(r.diff.length?"，改动 "+r.diff.map(function(d){ return d.label+" "+d.from+" → "+d.to; }).join("；"):"，参数与当前一致")+"。";
+}
+function deleteFromLibrary(id){
+  var list=loadLibrary(), before=list.length;
+  list=list.filter(function(x){ return x.id!==id; });
+  saveLibrary(list); renderLibrary();
+  $("specMsg").textContent=before===list.length?"没有删掉任何条目。":"已从动作库删除 1 条。";
+}
+function exportLibrary(){
+  var payload={version:"motionlab-library-1", count:loadLibrary().length, items:loadLibrary()};
+  var blob=new Blob([JSON.stringify(payload, null, 2)],{type:"application/json"});
+  var a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="motionlab-library.json"; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+  $("specMsg").textContent="已下载 motionlab-library.json（"+payload.count+" 条）。";
+}
+function importLibraryText(text){
+  var obj=JSON.parse(text);
+  var items=Array.isArray(obj)?obj:(obj.items||null);
+  if(!Array.isArray(items)) throw new Error("动作库文件里没有 items 数组");
+  var list=loadLibrary(), imported=0, skipped=0;
+  items.forEach(function(raw){
+    try{
+      var spec=normalizeSpec(raw);
+      spec.id=raw.id||("lib-"+Date.now()+"-"+Math.floor(Math.random()*10000));
+      var idx=-1; list.forEach(function(it,i){ if(it.id===spec.id) idx=i; });
+      if(idx>=0) list[idx]=spec; else list.push(spec);
+      imported++;
+    }catch(e){ skipped++; }
+  });
+  saveLibrary(list); renderLibrary();
+  return {imported:imported, skipped:skipped};
+}
+$("btnSpecGenerate").addEventListener("click",function(){
+  lastIntent=$("sentenceInput").value.trim();
+  refreshSpecBox();
+  $("specMsg").textContent="已生成当前 Spec 快照：预设「"+PRESETS[state.preset].label+"」+ 当前滑杆参数。点“保存到动作库”前，先在上面填名称和标签。";
+});
+$("btnSpecImport").addEventListener("click",function(){
+  try{
+    var obj=JSON.parse($("specBox").value);
+    var r=applySpec(obj);
+    var parts=[];
+    if(r.presetChanged) parts.push("已切换预设到「"+PRESETS[r.spec.preset].label+"」");
+    if(r.diff.length) parts.push("改动 "+r.diff.map(function(d){ return d.label+" "+d.from+" → "+d.to; }).join("；"));
+    if(r.spec.warnings.length) parts.push("提醒："+r.spec.warnings.join("；"));
+    $("specMsg").textContent="Spec 导入成功："+(parts.length?parts.join("。")+"。":"参数与当前一致。")+"编译结果在上面的 motionlab-0.1 文本框里。";
+  }catch(e){ $("specMsg").textContent="Spec 导入失败："+e.message+"。其余内容没有被改动。"; }
+});
+$("btnSpecSave").addEventListener("click",saveCurrentToLibrary);
+$("btnLibExport").addEventListener("click",exportLibrary);
+$("btnLibImport").addEventListener("click",function(){ $("libFile").click(); });
+$("libFile").addEventListener("change",function(e){
+  var f=e.target.files&&e.target.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{ var r=importLibraryText(rd.result); $("specMsg").textContent="动作库导入完成：成功 "+r.imported+" 条，跳过 "+r.skipped+" 条（版本或预设不符）。"; }
+    catch(err){ $("specMsg").textContent="动作库导入失败："+err.message; }
+  };
+  rd.readAsText(f); e.target.value="";
+});
+$("libSearch").addEventListener("input",renderLibrary);
+$("libList").addEventListener("click",function(e){
+  var btn=e.target;
+  if(!btn || !btn.getAttribute) return;
+  var action=btn.getAttribute("data-lib-action"), id=btn.getAttribute("data-lib-id");
+  if(!action || !id) return;
+  if(action==="load") loadFromLibrary(id);
+  if(action==="delete") deleteFromLibrary(id);
+});
+
 $("btnReset").addEventListener("click",function(){
   PRESETS[state.preset].params.forEach(function(p){ state.params[state.preset][p.key]=p.def; });
   renderParams(); state.t=0; syncAll(true);
   $("jsonMsg").textContent="已重置「"+PRESETS[state.preset].label+"」为默认参数。";
 });
 
+/* ---------- 场景 motionscene-0.1: 多个 Spec 连成一段 ---------- */
+var SCENE_VERSION="motionscene-0.1", SCENE_KEY="motionlab-scene-v1";
+var sceneItems=[], sceneName="示例场景 · 起跳→重拳→二连斩", sceneTransition=0.3;
+var scenePlaying=false, sceneTime=0, sceneOverridePose=null, sceneFallback=null;
+function loadScene(){
+  var data=null;
+  try{
+    var raw=localStorage.getItem(SCENE_KEY);
+    if(raw!==null) data=JSON.parse(raw);
+  }catch(e){ data=sceneFallback; }
+  if(!data){
+    data={version:SCENE_VERSION, name:sceneName, transitionSeconds:sceneTransition, items:seedSpecs()};
+    saveSceneData(data);
+  }
+  sceneName=data.name||sceneName;
+  sceneTransition=typeof data.transitionSeconds==="number"?clamp(data.transitionSeconds,0,1):0.3;
+  sceneItems.length=0;
+  (Array.isArray(data.items)?data.items:[]).forEach(function(raw){
+    try{ var spec=normalizeSpec(raw); sceneItems.push(spec); }catch(e){}
+  });
+  return sceneItems;
+}
+function saveSceneData(data){
+  try{ localStorage.setItem(SCENE_KEY, JSON.stringify(data)); }
+  catch(e){ sceneFallback=data; }
+}
+function saveScene(){
+  saveSceneData({version:SCENE_VERSION, name:sceneName, transitionSeconds:sceneTransition, items:sceneItems});
+}
+function withSpec(spec, fn){
+  var prevPreset=state.preset, prevParams=state.params[spec.preset];
+  var norm=normalizeSpec(spec);
+  state.preset=norm.preset;
+  state.params[norm.preset]=norm.params;
+  try{ return fn(); }
+  finally{
+    state.preset=prevPreset;
+    state.params[norm.preset]=prevParams;
+  }
+}
+function timelineDurationForSpec(spec){
+  return withSpec(spec, function(){ return buildTimeline().duration; });
+}
+function poseAtForSpec(spec, tt){
+  return withSpec(spec, function(){ return poseAt(clamp(tt,0,buildTimeline().duration)); });
+}
+function lerpPoint(a,b,k){ return {x:lerp(a.x,b.x,k), y:lerp(a.y,b.y,k)}; }
+function lerpPose(a,b,k){
+  if(!a) return b; if(!b) return a;
+  function lerpJoints(x,y){
+    var o={};
+    RIG_NODES.forEach(function(n){ o[n]=lerpPoint(x[n], y[n], k); });
+    return o;
+  }
+  var prop=null;
+  if(a.prop && b.prop) prop={from:lerpPoint(a.prop.from,b.prop.from,k), to:lerpPoint(a.prop.to,b.prop.to,k)};
+  else prop=a.prop||b.prop;
+  return {main:lerpJoints(a.main,b.main), target:(a.target&&b.target)?lerpJoints(a.target,b.target):(a.target||b.target), prop:prop, rootX:lerp(a.rootX,b.rootX,k), rootY:lerp(a.rootY,b.rootY,k)};
+}
+function sceneSegments(){
+  var segs=[], cursor=0;
+  sceneItems.forEach(function(spec, i){
+    var dur=timelineDurationForSpec(spec);
+    var trans=(i<sceneItems.length-1)?sceneTransition:0;
+    segs.push({spec:spec, index:i, start:cursor, duration:dur, transition:trans, end:cursor+dur});
+    cursor+=dur+trans;
+  });
+  return {segments:segs, total:cursor};
+}
+function sceneDuration(){ return sceneSegments().total; }
+function scenePoseAt(time){
+  if(!sceneItems.length) return null;
+  var s=sceneSegments();
+  if(time<=0){
+    var first=s.segments[0];
+    return {pose:poseAtForSpec(first.spec,0), segmentIndex:0, phase:"segment", segmentTime:0};
+  }
+  if(time>=s.total){
+    var last=s.segments[s.segments.length-1];
+    return {pose:poseAtForSpec(last.spec,last.duration), segmentIndex:last.index, phase:"end", segmentTime:last.duration};
+  }
+  for(var i=0;i<s.segments.length;i++){
+    var seg=s.segments[i];
+    if(time<seg.end){
+      return {pose:poseAtForSpec(seg.spec,time-seg.start), segmentIndex:seg.index, phase:"segment", segmentTime:time-seg.start};
+    }
+    var transEnd=seg.end+seg.transition;
+    if(time<transEnd && i+1<s.segments.length){
+      var k=smooth(clamp((time-seg.end)/Math.max(seg.transition,0.001),0,1));
+      var a=poseAtForSpec(seg.spec,seg.duration);
+      var b=poseAtForSpec(s.segments[i+1].spec,0);
+      return {pose:lerpPose(a,b,k), segmentIndex:i+1, phase:"transition", segmentTime:0};
+    }
+  }
+  var last2=s.segments[s.segments.length-1];
+  return {pose:poseAtForSpec(last2.spec,last2.duration), segmentIndex:last2.index, phase:"end", segmentTime:last2.duration};
+}
+function getSceneState(){ return {playing:scenePlaying, time:sceneTime, name:sceneName, transitionSeconds:sceneTransition, items:sceneItems, totalDuration:sceneDuration()}; }
+function sceneToJSON(){
+  return {version:SCENE_VERSION, name:sceneName, transitionSeconds:sceneTransition, items:JSON.parse(JSON.stringify(sceneItems)), totalDuration:+sceneDuration().toFixed(3)};
+}
+function renderSceneList(){
+  $("sceneName").value=sceneName;
+  $("sceneTransition").value=String(sceneTransition);
+  if(!sceneItems.length){ $("sceneList").innerHTML="<p style=\"color:var(--ink2)\">场景为空：先把当前 Spec 加入场景，或载入示例场景。</p>"; $("sceneStatus").textContent=""; return; }
+  $("sceneList").innerHTML=sceneItems.map(function(it,i){
+    var paramsText=PRESETS[it.preset]?PRESETS[it.preset].params.map(function(pp){ return pp.label+" "+fmtVal(pp, it.params[pp.key]); }).join(" · "):"";
+    return '<div class="libitem"><b>'+(i+1)+". "+it.name+'</b> <span style="color:var(--ink2)">'+(PRESETS[it.preset]?PRESETS[it.preset].label:it.preset)+' · '+timelineDurationForSpec(it).toFixed(2)+'s</span><div class="meta">'+paramsText+'</div><div class="drow" style="margin:8px 0 0"><button class="btn ghost small" type="button" data-scene-action="up" data-scene-index="'+i+'">上移</button><button class="btn ghost small" type="button" data-scene-action="down" data-scene-index="'+i+'">下移</button><button class="btn ghost small" type="button" data-scene-action="remove" data-scene-index="'+i+'">删除</button></div></div>';
+  }).join("");
+  $("sceneStatus").textContent="场景共 "+sceneItems.length+" 段，总时长 "+sceneDuration().toFixed(2)+"s（含段间过渡 "+sceneTransition+"s）。";
+}
+function addCurrentSpecToScene(){
+  var spec=buildSpec({name:$("specName").value.trim()||undefined, tags:parseTags($("specTags").value), source:"manual"});
+  if(!spec.name) spec.name=PRESETS[state.preset].label+" · 第 "+(sceneItems.length+1)+" 段";
+  sceneItems.push(spec); saveScene(); renderSceneList();
+  $("sceneMsg").textContent="已加入场景：第 "+sceneItems.length+" 段「"+spec.name+"」。";
+}
+function playScene(){
+  if(!sceneItems.length){ $("sceneMsg").textContent="场景为空，先把当前 Spec 加入场景。"; return; }
+  sceneName=$("sceneName").value.trim()||sceneName;
+  var tr=parseFloat($("sceneTransition").value);
+  if(isFinite(tr)) sceneTransition=clamp(tr,0,1);
+  saveScene(); renderSceneList();
+  state.playing=false; $("btnPlay").textContent="▶";
+  scenePlaying=true; sceneTime=0; sceneOverridePose=null;
+  $("sceneMsg").textContent="开始播放场景「"+sceneName+"」，共 "+sceneItems.length+" 段。";
+}
+function stopScene(){
+  if(!scenePlaying && !sceneOverridePose) return;
+  scenePlaying=false; sceneOverridePose=null;
+  renderParams(); syncAll(true);
+  $("sceneStatus").textContent="已停止场景播放。";
+}
+function exportScene(){
+  var payload=sceneToJSON();
+  var blob=new Blob([JSON.stringify(payload, null, 2)],{type:"application/json"});
+  var a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="motionlab-scene.json"; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+  $("sceneMsg").textContent="已下载 motionlab-scene.json（"+payload.items.length+" 段）。";
+}
+function importSceneText(text){
+  var obj=JSON.parse(text);
+  if(obj.version!==SCENE_VERSION) throw new Error("版本不是 "+SCENE_VERSION);
+  if(!Array.isArray(obj.items)) throw new Error("场景文件里没有 items 数组");
+  var items=[], skipped=0;
+  obj.items.forEach(function(raw){
+    try{ items.push(normalizeSpec(raw)); }catch(e){ skipped++; }
+  });
+  sceneName=typeof obj.name==="string"&&obj.name?obj.name:sceneName;
+  if(typeof obj.transitionSeconds==="number") sceneTransition=clamp(obj.transitionSeconds,0,1);
+  sceneItems.length=0; items.forEach(function(it){ sceneItems.push(it); });
+  saveScene(); renderSceneList();
+  return {imported:items.length, skipped:skipped};
+}
+$("btnSceneAdd").addEventListener("click",addCurrentSpecToScene);
+$("btnScenePlay").addEventListener("click",playScene);
+$("btnSceneStop").addEventListener("click",stopScene);
+$("btnSceneExport").addEventListener("click",exportScene);
+$("btnSceneImport").addEventListener("click",function(){ $("sceneFile").click(); });
+$("sceneFile").addEventListener("change",function(e){
+  var f=e.target.files&&e.target.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{ var r=importSceneText(rd.result); $("sceneMsg").textContent="场景导入完成：成功 "+r.imported+" 段，跳过 "+r.skipped+" 段。"; }
+    catch(err){ $("sceneMsg").textContent="场景导入失败："+err.message; }
+  };
+  rd.readAsText(f); e.target.value="";
+});
+$("btnSceneClear").addEventListener("click",function(){
+  if(scenePlaying) stopScene();
+  sceneItems.length=0; saveScene(); renderSceneList();
+  $("sceneMsg").textContent="场景已清空。";
+});
+$("sceneList").addEventListener("click",function(e){
+  var btn=e.target;
+  if(!btn || !btn.getAttribute) return;
+  var action=btn.getAttribute("data-scene-action"), idx=parseInt(btn.getAttribute("data-scene-index"),10);
+  if(!action || isNaN(idx) || !sceneItems[idx]) return;
+  if(action==="remove"){ sceneItems.splice(idx,1); }
+  if(action==="up" && idx>0){ var tmp=sceneItems[idx-1]; sceneItems[idx-1]=sceneItems[idx]; sceneItems[idx]=tmp; }
+  if(action==="down" && idx<sceneItems.length-1){ var tmp2=sceneItems[idx+1]; sceneItems[idx+1]=sceneItems[idx]; sceneItems[idx]=tmp2; }
+  saveScene(); renderSceneList();
+  $("sceneMsg").textContent="场景顺序已更新。";
+});
+
+
+/* ---------- cross-domain solvers (same timeline/events/checks pattern) ---------- */
+function domVal(id, def){
+  var el=$(id); if(!el) return def;
+  var v=parseFloat(el.value); return isNaN(v)?def:v;
+}
+function domSet(id, outId, fmt){
+  var el=$(id); if(!el) return;
+  el.addEventListener("input",function(){ var o=$(outId); if(o) o.textContent=fmt(parseFloat(el.value)); drawDomains(); });
+}
+/* --- bio: gait with 2-link IK --- */
+var BIO={t:0, playing:false, GROUND:260, L1:50, L2:50};
+function bioParams(){ return {cadence:domVal("bioCadence",1.2), stride:domVal("bioStride",80), crouch:domVal("bioCrouch",0.3)}; }
+function bioFootTarget(P, phase, offset){
+  var q=((phase+offset)%1+1)%1;
+  var pelvisX=450;
+  if(q<0.6){ var s=q/0.6; return {x:pelvisX+lerp(P.stride/2,-P.stride/2,s), y:BIO.GROUND, stance:true}; }
+  var s=(q-0.6)/0.4;
+  return {x:pelvisX+lerp(-P.stride/2,P.stride/2,s), y:BIO.GROUND-Math.sin(s*Math.PI)*28, stance:false};
+}
+function bioIK(px, py, fx, fy){
+  var dx=fx-px, dy=fy-py, d=Math.hypot(dx,dy);
+  var dc=clamp(d, Math.abs(BIO.L1-BIO.L2)+1, BIO.L1+BIO.L2-1);
+  var fx2=px+dx/d*dc, fy2=py+dy/d*dc;
+  var a=Math.acos(clamp((BIO.L1*BIO.L1+dc*dc-BIO.L2*BIO.L2)/(2*BIO.L1*dc),-1,1));
+  var base=Math.atan2(dy,dx);
+  var knee={x:px+BIO.L1*Math.cos(base+a), y:py+BIO.L1*Math.sin(base+a)};
+  // knee forward: if knee is behind the leg direction, flip the branch
+  if(knee.x<Math.min(px,fx2)) knee={x:px+BIO.L1*Math.cos(base-a), y:py+BIO.L1*Math.sin(base-a)};
+  var kneeAngle=Math.acos(clamp((BIO.L1*BIO.L1+BIO.L2*BIO.L2-dc*dc)/(2*BIO.L1*BIO.L2),-1,1));
+  return {knee:knee, foot:{x:fx2,y:fy2}, flexionDeg:+(180-kneeAngle*180/Math.PI).toFixed(1)};
+}
+function bioPoseAt(t){
+  var P=bioParams(), phase=t*P.cadence;
+  var fr=bioFootTarget(P, phase, 0), fl=bioFootTarget(P, phase, 0.5);
+  // pelvis follows the stance foot(s): in double support it sits between
+  // them, in single support it shifts 60% toward the stance foot, so COM
+  // stays inside support instead of being nailed to the stage centre.
+  var pelvisX=450;
+  if(fr.stance && fl.stance) pelvisX=(fr.x+fl.x)/2;
+  else if(fr.stance) pelvisX=450+(fr.x-450)*0.6;
+  else if(fl.stance) pelvisX=450+(fl.x-450)*0.6;
+  var pelvisY=BIO.GROUND-90+P.crouch*15-Math.sin(phase*Math.PI*4)*4;
+  var pelvis={x:pelvisX, y:pelvisY};
+  var chest={x:pelvisX, y:pelvisY-55}, head={x:pelvisX, y:pelvisY-75};
+  var r=bioIK(pelvis.x, pelvis.y, fr.x, fr.y), l=bioIK(pelvis.x, pelvis.y, fl.x, fl.y);
+  function midSwing(phase2, offset){
+    var q=((phase2+offset)%1+1)%1;
+    if(q<0.6) return false;
+    var s=(q-0.6)/0.4; return s>=0.25 && s<=0.75;
+  }
+  return {pelvis:pelvis, chest:chest, head:head,
+    footR:r.foot, kneeR:r.knee, flexionR:r.flexionDeg, stanceR:fr.stance, midSwingR:midSwing(phase,0),
+    footL:l.foot, kneeL:l.knee, flexionL:l.flexionDeg, stanceL:fl.stance, midSwingL:midSwing(phase,0.5)};
+}
+function bioChecks(){
+  var P=bioParams(), maxFlex=0, comOut=0, minClear=1e9, frames=0;
+  for(var i=0;i<120;i++){
+    var t=i/60, pose=bioPoseAt(t); frames++;
+    maxFlex=Math.max(maxFlex, pose.flexionR, pose.flexionL);
+    var comX=(pose.pelvis.x+pose.chest.x)/2;
+    var support=[];
+    if(pose.stanceR) support.push(pose.footR.x);
+    if(pose.stanceL) support.push(pose.footL.x);
+    if(support.length===2){ if(comX<Math.min(support[0],support[1])-1 || comX>Math.max(support[0],support[1])+1) comOut++; }
+    else if(support.length===1){ if(Math.abs(comX-support[0])>25) comOut++; }
+    if(pose.midSwingR) minClear=Math.min(minClear, BIO.GROUND-pose.footR.y);
+    if(pose.midSwingL) minClear=Math.min(minClear, BIO.GROUND-pose.footL.y);
+  }
+  var pass=maxFlex<=130 && comOut===0 && minClear>=10;
+  return {sampledFrames:frames, maxKneeFlexionDeg:+maxFlex.toFixed(1), comOutsideSupportFrames:comOut,
+    minSwingClearancePx:+minClear.toFixed(1), pass:pass,
+    thresholds:{maxKneeFlexionDeg:130, comOutsideSupportFrames:0, minSwingClearancePx:10}};
+}
+function buildBioJSON(){
+  var P=bioParams(), frames=[];
+  for(var i=0;i<120;i++){ var t=i/60, p=bioPoseAt(t);
+    frames.push({f:i, t:+t.toFixed(3), pelvis:[+p.pelvis.x.toFixed(1),+p.pelvis.y.toFixed(1)],
+      kneeR:[+p.kneeR.x.toFixed(1),+p.kneeR.y.toFixed(1)], footR:[+p.footR.x.toFixed(1),+p.footR.y.toFixed(1)],
+      kneeL:[+p.kneeL.x.toFixed(1),+p.kneeL.y.toFixed(1)], footL:[+p.footL.x.toFixed(1),+p.footL.y.toFixed(1)]}); }
+  return {version:"domain-bio-0.1", domain:"biomechanics-gait", fps:60, duration:2, params:P,
+    events:[{t:0,frame:0,type:"heel-strike",foot:"R"},{t:0.5,frame:30,type:"heel-strike",foot:"L"}],
+    checks:bioChecks(), tracks:{frames:frames, note:"IK pose, not hand-drawn: knee from law of cosines, foot targets from gait phase."}};
+}
+/* --- mech: crank-slider + gears --- */
+var MECH={t:0, playing:false, CX:300, CY:150};
+function mechParams(){ return {crank:domVal("mechCrank",50), rod:domVal("mechRod",150), rpm:domVal("mechRpm",60), ratio:domVal("mechRatio",2)}; }
+function mechPoseAt(t){
+  var P=mechParams(), th=2*Math.PI*P.rpm/60*t;
+  var pin={x:MECH.CX+P.crank*Math.cos(th), y:MECH.CY+P.crank*Math.sin(th)};
+  var pistonX=MECH.CX+P.crank*Math.cos(th)+Math.sqrt(Math.max(0,P.rod*P.rod-Math.pow(P.crank*Math.sin(th),2)));
+  return {theta:th, pin:pin, pistonX:pistonX, gear1:th, gear2:-th/P.ratio};
+}
+function mechChecks(){
+  var P=mechParams(), xs=[];
+  for(var i=0;i<240;i++){ xs.push(mechPoseAt(i/60).pistonX); }
+  var travel=Math.max.apply(null,xs)-Math.min.apply(null,xs);
+  var pass=P.rod>P.crank && Math.abs(travel-2*P.crank)<1.5;
+  return {rodLongerThanCrank:P.rod>P.crank, pistonTravelPx:+travel.toFixed(1), expectedTravelPx:2*P.crank,
+    gearRatio:P.ratio, pass:pass};
+}
+function buildMechJSON(){
+  var P=mechParams(), frames=[], dur=2*60/P.rpm;
+  for(var i=0;i<Math.round(dur*60);i++){ var t=i/60, p=mechPoseAt(t);
+    frames.push({f:i, t:+t.toFixed(3), crankAngleRad:+p.theta.toFixed(3), pistonX:+p.pistonX.toFixed(1), gear1Rad:+p.gear1.toFixed(3), gear2Rad:+p.gear2.toFixed(3)}); }
+  return {version:"domain-mech-0.1", domain:"mechanical-crank-slider-gears", fps:60, duration:+dur.toFixed(3), params:P,
+    events:[{t:0,frame:0,type:"top-dead-center"},{t:+((60/P.rpm)/2).toFixed(3),frame:Math.round(30/P.rpm*60),type:"bottom-dead-center"}],
+    checks:mechChecks(), tracks:{frames:frames, note:"Piston x from crank geometry, gear2 = -crank/ratio."}};
+}
+/* --- astro: Kepler orbit + periapsis burn --- */
+var ASTRO={t:0, playing:false, CX:450, CY:150, A:200};
+function astroParams(){ return {ecc:domVal("astroEcc",0.3), period:domVal("astroPeriod",5), burn:domVal("astroBurn",0)}; }
+function astroMu(P){ return Math.pow(2*Math.PI/P.period,2)*Math.pow(ASTRO.A,3); }
+function astroOrbitAt(P, t, burnApplied){
+  var mu=astroMu(P), a=ASTRO.A, e=P.ecc;
+  if(burnApplied && P.burn>0){
+    var rPeri=a*(1-e), vPeri=Math.sqrt(mu*(1+e)/(a*(1-e)))+P.burn;
+    var energy=vPeri*vPeri/2-mu/rPeri, h=rPeri*vPeri;
+    a=1/(2/rPeri - vPeri*vPeri/mu);
+    e=Math.sqrt(Math.max(0,1+2*energy*h*h/(mu*mu)));
+    var n=Math.sqrt(mu/Math.pow(a,3)), M=n*t;
+    var E=M; for(var k=0;k<8;k++){ E=E-(E-e*Math.sin(E)-M)/(1-e*Math.cos(E)); }
+    var nu=2*Math.atan2(Math.sqrt(1+e)*Math.sin(E/2), Math.sqrt(1-e)*Math.cos(E/2));
+    var r=a*(1-e*Math.cos(E));
+    return {x:ASTRO.CX+r*Math.cos(nu), y:ASTRO.CY+r*Math.sin(nu), r:r, a:a, e:e, energy:energy, h:h};
+  }
+  var n0=Math.sqrt(mu/Math.pow(a,3)), M0=n0*t;
+  var E0=M0; for(var k2=0;k2<8;k2++){ E0=E0-(E0-e*Math.sin(E0)-M0)/(1-e*Math.cos(E0)); }
+  var nu0=2*Math.atan2(Math.sqrt(1+e)*Math.sin(E0/2), Math.sqrt(1-e)*Math.cos(E0/2));
+  var r0=a*(1-e*Math.cos(E0));
+  var v0=Math.sqrt(mu*(2/r0-1/a)), h0=Math.sqrt(mu*a*(1-e*e));
+  return {x:ASTRO.CX+r0*Math.cos(nu0), y:ASTRO.CY+r0*Math.sin(nu0), r:r0, a:a, e:e, energy:v0*v0/2-mu/r0, h:h0};
+}
+function astroPoseAt(t){
+  var P=astroParams();
+  if(P.burn>0 && t>=0.001){
+    // burn happens at the first periapsis after t=0, i.e. at t=period (M=2pi);
+    // before that, the original orbit; after, the post-burn orbit timed from burn.
+    if(t<P.period) return astroOrbitAt(P, t, false);
+    return astroOrbitAt(P, t-P.period, true);
+  }
+  return astroOrbitAt(P, t, false);
+}
+function astroChecks(){
+  var P=astroParams(), mu=astroMu(P);
+  function segVar(burnApplied, t0, t1){
+    var es=[], hs=[];
+    for(var i=0;i<=20;i++){ var o=astroOrbitAt(P, t0+(t1-t0)*i/20, burnApplied); es.push(o.energy); hs.push(o.h); }
+    var spread=function(a){ return Math.max.apply(null,a)-Math.min.apply(null,a); };
+    return {energySpread:spread(es), hSpread:spread(hs),
+      energyRel:Math.abs(spread(es))/(Math.abs(es[0])||1), hRel:Math.abs(spread(hs))/(Math.abs(hs[0])||1)};
+  }
+  var pre=segVar(false, 0, Math.min(P.period, 2));
+  var pass=pre.energyRel<0.02 && pre.hRel<0.02;
+  var out={preBurn:pre, periodSeconds:P.period, keplerPeriodSeconds:+((2*Math.PI*Math.sqrt(Math.pow(ASTRO.A,3)/mu))).toFixed(3), pass:pass};
+  if(P.burn>0){
+    var post=segVar(true, 0, 1);
+    out.postBurn=post; out.pass=pass && post.energyRel<0.02 && post.hRel<0.02;
+  }
+  return out;
+}
+function buildAstroJSON(){
+  var P=astroParams(), frames=[], dur=P.period*1.5;
+  for(var i=0;i<Math.round(dur*60);i++){ var t=i/60, p=astroPoseAt(t);
+    frames.push({f:i, t:+t.toFixed(3), x:+p.x.toFixed(1), y:+p.y.toFixed(1), r:+p.r.toFixed(1)}); }
+  return {version:"domain-astro-0.1", domain:"celestial-kepler-orbit", fps:60, duration:+dur.toFixed(3), params:P,
+    events:[{t:0,frame:0,type:"periapsis"},{t:+(P.period/2).toFixed(3),frame:Math.round(P.period*30),type:"apoapsis"}].concat(P.burn>0?[{t:P.period,frame:Math.round(P.period*60),type:"burn",deltaV:P.burn}]:[]),
+    checks:astroChecks(), tracks:{frames:frames, note:"Positions from Kepler equation (Newton iteration), not a drawn ellipse."}};
+}
+/* --- domain drawing + wiring --- */
+function drawDomains(){
+  function cv(id){ var c=$(id); return c?c.getContext("2d"):null; }
+  var bctx=cv("bioCanvas");
+  if(bctx){
+    bctx.clearRect(0,0,900,300); bctx.fillStyle="#121317"; bctx.fillRect(0,0,900,300);
+    bctx.strokeStyle="#e8e6df"; bctx.lineWidth=2; bctx.beginPath(); bctx.moveTo(24,BIO.GROUND); bctx.lineTo(876,BIO.GROUND); bctx.stroke();
+    var p=bioPoseAt(BIO.t);
+    bctx.strokeStyle="#f2efe8"; bctx.lineWidth=4; bctx.lineCap="round";
+    function bl(a,b2){ bctx.beginPath(); bctx.moveTo(a.x,a.y); bctx.lineTo(b2.x,b2.y); bctx.stroke(); }
+    bl(p.pelvis,p.kneeR); bl(p.kneeR,p.footR); bl(p.pelvis,p.kneeL); bl(p.kneeL,p.footL); bl(p.pelvis,p.chest); bl(p.chest,p.head);
+    bctx.beginPath(); bctx.arc(p.head.x,p.head.y-6,11,0,Math.PI*2); bctx.stroke();
+    bctx.fillStyle="#ff5a3c"; bctx.beginPath(); bctx.arc((p.pelvis.x+p.chest.x)/2,(p.pelvis.y+p.chest.y)/2,4,0,Math.PI*2); bctx.fill();
+    var bc=bioChecks();
+    $("bioChecks").textContent="校验 " + (bc.pass?"✓ 通过":"! 未通过") + " · 膝屈曲最大 " + bc.maxKneeFlexionDeg + "° · 重心出支撑 " + bc.comOutsideSupportFrames + " 帧 · 摆动离地最小 " + bc.minSwingClearancePx + " px";
+  }
+  var mctx=cv("mechCanvas");
+  if(mctx){
+    mctx.clearRect(0,0,900,300); mctx.fillStyle="#121317"; mctx.fillRect(0,0,900,300);
+    var mp=mechPoseAt(MECH.t), P=mechParams();
+    mctx.strokeStyle="#e8e6df"; mctx.lineWidth=2; mctx.beginPath(); mctx.moveTo(24,MECH.CY); mctx.lineTo(876,MECH.CY); mctx.stroke();
+    mctx.strokeStyle="#9fb4c8"; mctx.beginPath(); mctx.arc(MECH.CX,MECH.CY,40,0,Math.PI*2); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(MECH.CX,MECH.CY); mctx.lineTo(MECH.CX+40*Math.cos(mp.gear1),MECH.CY+40*Math.sin(mp.gear1)); mctx.stroke();
+    var g2x=MECH.CX+40+40*P.ratio;
+    mctx.strokeStyle="#d8b25c"; mctx.beginPath(); mctx.arc(g2x,MECH.CY,40*P.ratio,0,Math.PI*2); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(g2x,MECH.CY); mctx.lineTo(g2x+40*P.ratio*Math.cos(mp.gear2),MECH.CY+40*P.ratio*Math.sin(mp.gear2)); mctx.stroke();
+    mctx.strokeStyle="#f2efe8"; mctx.lineWidth=4; mctx.beginPath(); mctx.moveTo(MECH.CX,MECH.CY); mctx.lineTo(mp.pin.x,mp.pin.y); mctx.lineTo(mp.pistonX,MECH.CY); mctx.stroke();
+    mctx.fillStyle="#ff5a3c"; mctx.fillRect(mp.pistonX,MECH.CY-20,50,40);
+    var mc=mechChecks();
+    $("mechChecks").textContent="校验 " + (mc.pass?"✓ 通过":"! 未通过") + " · 活塞行程 " + mc.pistonTravelPx + " px（应为 " + mc.expectedTravelPx + "）· 连杆>曲柄 " + (mc.rodLongerThanCrank?"是":"否") + " · 齿轮比 " + mc.gearRatio;
+  }
+  var actx=cv("astroCanvas");
+  if(actx){
+    actx.clearRect(0,0,900,300); actx.fillStyle="#121317"; actx.fillRect(0,0,900,300);
+    var ap=astroPoseAt(ASTRO.t), P2=astroParams();
+    actx.strokeStyle="rgba(255,255,255,0.25)"; actx.beginPath();
+    for(var k=0;k<=72;k++){ var o=astroOrbitAt(P2, P2.period*k/72, false); if(k===0) actx.moveTo(o.x,o.y); else actx.lineTo(o.x,o.y); }
+    actx.stroke();
+    if(P2.burn>0){
+      actx.strokeStyle="rgba(255,90,60,0.5)"; actx.beginPath();
+      for(var k2=0;k2<=72;k2++){ var o2=astroOrbitAt(P2, P2.period*k2/72, true); if(k2===0) actx.moveTo(o2.x,o2.y); else actx.lineTo(o2.x,o2.y); }
+      actx.stroke();
+    }
+    actx.fillStyle="#ffd9d0"; actx.beginPath(); actx.arc(ASTRO.CX,ASTRO.CY,14,0,Math.PI*2); actx.fill();
+    actx.fillStyle="#4cc38a"; actx.beginPath(); actx.arc(ap.x,ap.y,6,0,Math.PI*2); actx.fill();
+    var ac=astroChecks();
+    $("astroChecks").textContent="校验 " + (ac.pass?"✓ 通过":"! 未通过") + " · 周期 " + ac.periodSeconds + "s（开普勒算出 " + ac.keplerPeriodSeconds + "s）· 点火 " + P2.burn + " px/s";
+  }
+}
+function domainDownload(boxId, filename){
+  var blob=new Blob([$(boxId).value],{type:"application/json"});
+  var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+}
+$("btnBioPlay").addEventListener("click",function(){ BIO.playing=!BIO.playing; $("btnBioPlay").textContent=BIO.playing?"⏸ 步态":"▶ 步态"; });
+$("btnMechPlay").addEventListener("click",function(){ MECH.playing=!MECH.playing; $("btnMechPlay").textContent=MECH.playing?"⏸ 机械":"▶ 机械"; });
+$("btnAstroPlay").addEventListener("click",function(){ ASTRO.playing=!ASTRO.playing; $("btnAstroPlay").textContent=ASTRO.playing?"⏸ 轨道":"▶ 轨道"; });
+$("btnBioExport").addEventListener("click",function(){ $("bioBox").value=JSON.stringify(buildBioJSON(),null,2); domainDownload("bioBox","domain-bio-0.1.json"); });
+$("btnMechExport").addEventListener("click",function(){ $("mechBox").value=JSON.stringify(buildMechJSON(),null,2); domainDownload("mechBox","domain-mech-0.1.json"); });
+$("btnAstroExport").addEventListener("click",function(){ $("astroBox").value=JSON.stringify(buildAstroJSON(),null,2); domainDownload("astroBox","domain-astro-0.1.json"); });
+domSet("bioCadence","bioCadenceV",function(v){return v.toFixed(1)+" /s";});
+domSet("bioStride","bioStrideV",function(v){return Math.round(v)+" px";});
+domSet("bioCrouch","bioCrouchV",function(v){return Math.round(v*100)+"%";});
+domSet("mechCrank","mechCrankV",function(v){return Math.round(v)+" px";});
+domSet("mechRod","mechRodV",function(v){return Math.round(v)+" px";});
+domSet("mechRpm","mechRpmV",function(v){return Math.round(v)+" rpm";});
+domSet("mechRatio","mechRatioV",function(v){return v;});
+domSet("astroEcc","astroEccV",function(v){return v.toFixed(2);});
+domSet("astroPeriod","astroPeriodV",function(v){return v+" s";});
+domSet("astroBurn","astroBurnV",function(v){return Math.round(v)+" px/s";});
+
 /* ---------- playback loop ---------- */
 function loop(ts){
+  var domainDt=0;
+  if(typeof state.lastDomainTs==="undefined"){ state.lastDomainTs=ts; }
+  else if(ts>state.lastDomainTs){ domainDt=(ts-state.lastDomainTs)/1000; }
+  state.lastDomainTs=ts;
+  if(BIO.playing){ BIO.t+=domainDt; if(BIO.t>=2) BIO.t%=2; }
+  if(MECH.playing){ var md=2*60/domVal("mechRpm",60); MECH.t+=domainDt; if(MECH.t>=md) MECH.t%=md; }
+  if(ASTRO.playing){ var ad=domVal("astroPeriod",5)*1.5; ASTRO.t+=domainDt; if(ASTRO.t>=ad) ASTRO.t%=ad; }
+  if(scenePlaying){
+    if(state.lastTs){ var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value); sceneTime+=dt;
+      var total=sceneDuration();
+      if(sceneTime>=total){
+        if($("tgLoop").checked){ sceneTime=sceneTime%total; }
+        else { sceneTime=total; scenePlaying=false; sceneOverridePose=null; $("sceneStatus").textContent="场景播放完毕。"; renderParams(); }
+      }
+    }
+    state.lastTs=ts;
+    if(scenePlaying){
+      var sp=scenePoseAt(sceneTime);
+      if(sp){
+        var segSpec=sceneItems[sp.segmentIndex];
+        state.preset=segSpec.preset;
+        document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===segSpec.preset?"true":"false"); });
+        PRESETS[segSpec.preset].params.forEach(function(pp){ state.params[segSpec.preset][pp.key]=segSpec.params[pp.key]; });
+        state.t=sp.segmentTime;
+        sceneOverridePose=sp.pose;
+        $("sceneStatus").textContent="播放中：第 "+(sp.segmentIndex+1)+" / "+sceneItems.length+" 段 · "+(sp.phase==="transition"?"过渡 · ":"")+PRESETS[segSpec.preset].label;
+      }
+    }
+    render(); drawDomains();
+    requestAnimationFrame(loop);
+    return;
+  }
   if(state.playing){
     if(state.lastTs){ var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value); state.t+=dt;
       var TL=buildTimeline();
@@ -966,7 +2159,7 @@ function loop(ts){
     }
     state.lastTs=ts;
   } else state.lastTs=ts;
-  render();
+  render(); drawDomains();
   requestAnimationFrame(loop);
 }
 
@@ -975,6 +2168,10 @@ fitCanvas();
 window.addEventListener("resize",function(){ fitCanvas(); render(); });
 renderParams();
 syncAll(true);
+renderLibrary();
+refreshSpecBox();
+loadScene();
+renderSceneList();
 requestAnimationFrame(loop);
 })();
 </script>
