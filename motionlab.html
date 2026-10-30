@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>MotionLab — 动作预演台</title>
+<style>
+  :root{
+    --bg:#f2f2ef; --surface:#ffffff; --surface2:#e9e9e4; --line:#d8d8d0;
+    --ink:#191b1e; --ink2:#555a60; --ink3:#8a8f96;
+    --accent:#d9381e; --accent-ink:#b92c14; --ok:#1d7a4f; --warn:#b26a00;
+    --stage:#14161a; --stage2:#1d2026;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1113; --surface:#17191d; --surface2:#1f2227; --line:#2b2f36;
+      --ink:#eceee9; --ink2:#a7adb5; --ink3:#6f757e; --accent:#ff5a3c; --accent-ink:#ff7a5f; --ok:#4cc38a; --warn:#f0a840; }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent-ink)}
+  button{font-family:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:20px 18px 64px}
+  /* ---------- header ---------- */
+  header.top{padding:14px 0 18px;border-bottom:2px solid var(--ink)}
+  header.top h1{font-size:30px;line-height:1.15;margin:0;letter-spacing:-.01em;font-weight:800}
+  header.top h1 .lab{color:var(--accent)}
+  header.top p{margin:8px 0 0;color:var(--ink2);max-width:72ch;font-size:14.5px}
+  .topmeta{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);background:var(--surface);padding:3px 9px;border-radius:999px;color:var(--ink2)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* ---------- sentence bar ---------- */
+  .sentence{margin:18px 0 0;background:var(--surface);border:1px solid var(--line);padding:14px}
+  .sentence label{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink2);display:block;margin-bottom:8px}
+  .sentence .row{display:flex;gap:8px;flex-wrap:wrap}
+  .sentence input[type=text]{flex:1 1 260px;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600}
+  .btn:hover{opacity:.88}
+  .btn.ghost{background:transparent;color:var(--ink)}
+  .btn.small{padding:6px 11px;font-size:13px}
+  .btn.accent{background:var(--accent);border-color:var(--accent);color:#fff}
+  .examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .examples button{border:1px solid var(--line);background:var(--surface2);color:var(--ink2);border-radius:999px;padding:3px 10px;font-size:12.5px}
+  .examples button:hover{color:var(--ink);border-color:var(--ink3)}
+  #parseNote{margin:10px 0 0;font-size:13px;color:var(--ink2);display:none}
+  #parseNote .tag{display:inline-block;font-family:var(--mono);font-size:11px;background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin:0 3px 3px 0;color:var(--ink)}
+
+  /* ---------- lab grid ---------- */
+  .lab{display:grid;grid-template-columns:minmax(0,1fr) 318px;gap:16px;margin-top:16px;align-items:start}
+  @media (max-width:960px){ .lab{grid-template-columns:1fr} }
+
+  .stagecard{background:var(--surface);border:1px solid var(--line)}
+  .presets{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line)}
+  .presets button{flex:1 1 auto;border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink2);padding:11px 8px;font-size:14px;font-weight:600}
+  .presets button:last-child{border-right:0}
+  .presets button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+  .presets button small{display:block;font-weight:400;font-size:11.5px;opacity:.75;font-family:var(--mono)}
+  .stagewrap{position:relative;background:var(--stage)}
+  canvas#stage{display:block;width:100%;height:auto;aspect-ratio:900/520}
+  .hud{position:absolute;top:10px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+  .hud span{font-family:var(--mono);font-size:11.5px;color:#cfd3da;background:rgba(10,11,13,.62);padding:3px 8px;border-radius:4px}
+  .hud span#hudPhase{color:#ffb4a3}
+
+  .phasebar{display:flex;height:26px;border-top:1px solid var(--line);overflow:hidden}
+  .phasebar div{position:relative;font-size:10.5px;font-family:var(--mono);color:#fff;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;min-width:0}
+  .phasebar div.on{box-shadow:inset 0 0 0 2px #fff}
+
+  .transport{padding:12px 14px 14px;border-top:1px solid var(--line)}
+  .trow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tbtn{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .tbtn.play{background:var(--accent);border-color:var(--accent);color:#fff;width:46px;height:46px;font-size:17px}
+  .tbtn:hover{filter:brightness(1.06)}
+  .timecode{font-family:var(--mono);font-size:13px;min-width:118px}
+  .timecode b{font-size:15px}
+  input[type=range].scrub{flex:1 1 180px;accent-color:var(--accent);height:28px;min-width:120px}
+  select.speed{font:inherit;font-size:13px;padding:7px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+  .toggles{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px;color:var(--ink2)}
+  .toggles label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+  .toggles input{accent-color:var(--accent);width:16px;height:16px}
+
+  .framedata{border-top:1px solid var(--line);padding:12px 14px}
+  .framedata h3,.side h3{margin:0 0 8px;font-size:12px;letter-spacing:.05em;color:var(--ink2);font-weight:700}
+  .fdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+  .fd{background:var(--surface2);padding:8px 10px;border-radius:6px}
+  .fd b{display:block;font-family:var(--mono);font-size:17px;line-height:1.2}
+  .fd span{font-size:11.5px;color:var(--ink2)}
+  .fd.hot b{color:var(--accent)}
+
+  /* ---------- side panel ---------- */
+  .side{display:flex;flex-direction:column;gap:16px}
+  .side section{background:var(--surface);border:1px solid var(--line);padding:14px}
+  .param{margin-bottom:13px}
+  .param:last-child{margin-bottom:2px}
+  .param .prow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .param label{font-size:13.5px;font-weight:600}
+  .param output{font-family:var(--mono);font-size:12.5px;color:var(--accent-ink);white-space:nowrap}
+  .param input[type=range]{width:100%;accent-color:var(--accent);height:26px}
+  .param p{margin:1px 0 0;font-size:12px;color:var(--ink3);line-height:1.45}
+  .check{list-style:none;margin:0;padding:0;font-size:13.5px}
+  .check li{display:flex;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .check li:last-child{border-bottom:0}
+  .check .ic{flex:none;width:20px;height:20px;border-radius:50%;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);margin-top:1px}
+  .ic.ok{background:var(--ok);color:#fff}
+  .ic.warn{background:var(--warn);color:#fff}
+  .check small{display:block;color:var(--ink2);font-size:12px;line-height:1.45}
+  .feel{font-size:13.5px;color:var(--ink2);margin:0}
+  .feel b{color:var(--ink)}
+
+  /* ---------- data ---------- */
+  .data{margin-top:16px;background:var(--surface);border:1px solid var(--line);padding:16px}
+  .data h2{margin:0 0 4px;font-size:19px}
+  .data p.sub{margin:0 0 12px;color:var(--ink2);font-size:13.5px;max-width:80ch}
+  .data .drow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  textarea#jsonBox{width:100%;min-height:190px;font-family:var(--mono);font-size:12px;line-height:1.55;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);resize:vertical}
+  #jsonMsg{font-size:13px;margin:6px 0 0;min-height:1.4em;color:var(--ink2)}
+  .spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:14px}
+  .spec div{border:1px solid var(--line);padding:10px 12px;border-radius:6px}
+  .spec b{font-family:var(--mono);font-size:13px;color:var(--accent-ink)}
+  .spec p{margin:3px 0 0;font-size:12.5px;color:var(--ink2);line-height:1.5}
+
+  /* ---------- answers ---------- */
+  .answers{margin-top:34px}
+  .answers>h2{font-size:22px;margin:0 0 4px}
+  .answers>p.lede{color:var(--ink2);margin:0 0 18px;max-width:76ch}
+  .qa{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:960px){ .qa{grid-template-columns:1fr} }
+  .qa article{background:var(--surface);border:1px solid var(--line);padding:18px}
+  .qa article .qnum{font-family:var(--mono);font-size:12px;color:var(--accent-ink);font-weight:700}
+  .qa article h3{margin:6px 0 8px;font-size:17px;line-height:1.35}
+  .qa article p,.qa article li{font-size:13.8px;color:var(--ink2)}
+  .qa article p{margin:0 0 8px}
+  .qa article ul{margin:0;padding-left:18px}
+  .qa article li{margin-bottom:5px}
+  .qa article b{color:var(--ink)}
+  .verdict{margin-top:8px;padding:9px 11px;background:var(--surface2);border-radius:6px;font-size:13px;color:var(--ink)}
+  .roles{margin-top:14px;background:var(--surface);border:1px solid var(--line);padding:18px}
+  .roles h3{margin:0 0 10px;font-size:16px}
+  .roles .rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .roles .rgrid div p{margin:4px 0 0;font-size:13.5px;color:var(--ink2)}
+  .roles .rgrid b{font-size:14px}
+  footer{margin-top:36px;border-top:1px solid var(--line);padding-top:14px;color:var(--ink3);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between}
+  @media (max-width:560px){
+    .wrap{padding:14px 12px 48px}
+    header.top h1{font-size:23px}
+    .timecode{min-width:0}
+  }
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Motion<span class="lab">Lab</span> · 动作预演台</h1>
+    <p>先不渲染成片，先看火柴人。一句话拆成时段，落到关节时间线上，拖着逐帧看、把参数调到手感对了，再导出一份 JSON —— 那份文件就是以后 Claw 生产管线唯一的动作依据。预演查的是动作逻辑：蓄力够不够、打击对没对齐、落地有没有缓冲。</p>
+    <div class="topmeta">
+      <span class="chip">格式 <b>motionlab-0.1</b></span>
+      <span class="chip">引擎 <b>Canvas 2D · 确定性 pose(t)</b></span>
+      <span class="chip">帧率基准 <b>60 fps</b></span>
+      <span class="chip">灵感原点 <b>Still / Life 跳蚤的蓄力—起跳—落地</b></span>
+    </div>
+  </header>
+
+  <!-- 一句话生成 -->
+  <section class="sentence" aria-label="一句话生成动作草稿">
+    <label for="sentenceInput">一句话 → 动作草稿（关键词解析，只改预设和参数，不直接画画）</label>
+    <div class="row">
+      <input type="text" id="sentenceInput" value="蓄力跳得远一点，落地要有缓冲" autocomplete="off" />
+      <button class="btn accent" id="btnParse" type="button">生成草稿</button>
+    </div>
+    <div class="examples" aria-label="示例句子">
+      <button type="button" data-sentence="蓄力跳得远一点，落地要有缓冲">蓄力跳得远一点，落地要有缓冲</button>
+      <button type="button" data-sentence="一记重拳，命中停顿要狠，后摇慢一点">一记重拳，命中停顿要狠</button>
+      <button type="button" data-sentence="拔剑二连斩，第一下快，第二下重">拔剑二连斩</button>
+      <button type="button" data-sentence="犹豫一下，然后快速出拳">犹豫一下，然后快速出拳</button>
+    </div>
+    <p id="parseNote" role="status"></p>
+  </section>
+
+  <!-- 实验室 -->
+  <div class="lab">
+    <div class="stagecard">
+      <div class="presets" role="group" aria-label="动作预设">
+        <button type="button" data-preset="leap" aria-pressed="true">起跳预演<small>LEAP · Still/Life 模板</small></button>
+        <button type="button" data-preset="punch" aria-pressed="false">重拳对打<small>PUNCH · 战斗手感</small></button>
+        <button type="button" data-preset="slash" aria-pressed="false">二连斩<small>SLASH · 双人对打</small></button>
+      </div>
+
+      <div class="stagewrap">
+        <canvas id="stage" width="900" height="520" aria-label="火柴人动作舞台"></canvas>
+        <div class="hud"><span id="hudTime">t = 0.00s · F0</span><span id="hudPhase">待机</span></div>
+      </div>
+      <div class="phasebar" id="phaseBar" aria-label="动作阶段条"></div>
+
+      <div class="transport">
+        <div class="trow">
+          <button class="tbtn play" id="btnPlay" type="button" aria-label="播放或暂停">▶</button>
+          <button class="tbtn" id="btnPrev" type="button" aria-label="上一帧">⏮</button>
+          <button class="tbtn" id="btnNext" type="button" aria-label="下一帧">⏭</button>
+          <span class="timecode"><b id="tcNow">0.00</b> / <span id="tcDur">0.00</span> s</span>
+          <input type="range" class="scrub" id="scrub" min="0" max="1000" value="0" aria-label="时间轴" />
+          <select class="speed" id="speed" aria-label="播放速度">
+            <option value="0.25">0.25× 慢放</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select>
+          <button class="btn ghost small" id="btnImpact" type="button">跳到打击帧</button>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="tgOnion" checked /> 残影（前两帧）</label>
+          <label><input type="checkbox" id="tgTrail" checked /> 手部轨迹</label>
+          <label><input type="checkbox" id="tgCom" checked /> 重心与脚底标记</label>
+          <label><input type="checkbox" id="tgShake" checked /> 命中震屏</label>
+          <label><input type="checkbox" id="tgLoop" checked /> 循环播放</label>
+        </div>
+      </div>
+
+      <div class="framedata">
+        <h3>帧数据 · FRAME DATA（60 FPS 基准，格斗游戏就是这样调手感的）</h3>
+        <div class="fdgrid" id="fdGrid"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <section aria-label="参数">
+        <h3>参数 · 改数不重画，改完立刻看</h3>
+        <div id="paramList"></div>
+      </section>
+      <section aria-label="校验">
+        <h3>校验 · 工具当裁判（逐帧采样实测）</h3>
+        <ul class="check" id="checkList"></ul>
+      </section>
+      <section aria-label="手感提示">
+        <h3>这一预设在调什么</h3>
+        <p class="feel" id="feelText"></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- 数据 -->
+  <section class="data" aria-label="数据格式与导出">
+    <h2>对接格式 motionlab-0.1</h2>
+    <p class="sub">MotionLab 和 Claw 只认这份 JSON，谁都不重新猜那句话是什么意思。参数一改，这里实时更新；导出存档后，就是渲染端的唯一依据，AI 不能再偷偷改它。反过来，把一份旧 JSON 粘回来，舞台会恢复当时的参数。</p>
+    <div class="drow">
+      <button class="btn small" id="btnCopy" type="button">复制 JSON</button>
+      <button class="btn ghost small" id="btnDownload" type="button">下载 .json</button>
+      <button class="btn ghost small" id="btnImport" type="button">从文本框导入</button>
+      <button class="btn ghost small" id="btnReset" type="button">重置当前预设</button>
+    </div>
+    <textarea id="jsonBox" spellcheck="false" aria-label="motionlab JSON"></textarea>
+    <p id="jsonMsg" role="status"></p>
+    <div class="spec">
+      <div><b>rig</b><p>骨架：节点名 + 每段骨头的固定长度。Claw 侧把自己的关键节点一一映射过来，段长在两边都锁死。</p></div>
+      <div><b>tracks + params + phases</b><p>根节点轨迹按阶段边界采样导出，关节姿态由参数和阶段表在两边用同一套配方重建。渲染端执行同一组数，预演和成片不会各说各话。</p></div>
+      <div><b>events</b><p>语义事件：蓄力开始、离地、命中、落地、停顿起止。口播、镜头跟随和音效都挂在事件上，不挂在帧号上。</p></div>
+      <div><b>checks</b><p>导出时的校验快照：段长偏差、脚滑、重心、出画。渲染完回填一遍，就能对账预演有没有被执行。</p></div>
+    </div>
+  </section>
+
+  <!-- 三个问题 -->
+  <section class="answers">
+    <h2>先把三个问题说清楚</h2>
+    <p class="lede">这是你开工前问的三件事。结论都写在工具里了：下面的说法，就是上面这个舞台实际的做法，不是另一套 PPT。</p>
+    <div class="qa">
+      <article>
+        <span class="qnum">问题 1</span>
+        <h3>产品形态与技术路线是什么？</h3>
+        <p><b>形态：</b>一个浏览器里打开就能玩的动作预演台。没有安装、没有服务器、没有账号 —— 和 Still / Life 的单页 <span style="font-family:var(--mono);font-size:12.5px">index.html</span> 是同一种东西。</p>
+        <p><b>路线：数据驱动，不是 AI 直接画画。</b></p>
+        <ul>
+          <li><b>引擎层</b> —— Canvas 2D + 确定性 <span style="font-family:var(--mono);font-size:12.5px">pose(t)</span>：给第几秒，算出每个关节在哪。能定格、能逐帧、能反复看同一帧。</li>
+          <li><b>数据层</b> —— 动作 = 一份 JSON：骨架、时间线、事件。不存视频，不存代码。</li>
+          <li><b>校验层</b> —— 引擎顺带当裁判：段长、脚滑、重心、出画，犯规当场报。</li>
+        </ul>
+        <p class="verdict">不重复造轮子：不做物理引擎、不做 3D、不做动捕。Blender / Cascadeur 那套重型预演和你的二维水彩管线不合，这里只补你管线里缺的那一层。</p>
+      </article>
+      <article>
+        <span class="qnum">问题 2</span>
+        <h3>到底可不可行？</h3>
+        <p><b>可行，高可行 —— 前提是守住范围。</b></p>
+        <ul>
+          <li><b>容易：</b>火柴人、拖时间轴、慢放逐帧、预设、导出 JSON。Still / Life 已经证明浏览器里能跑确定性骨架。</li>
+          <li><b>中等：</b>一句话出草稿、双人对打、命中停顿、镜头跟随。难在手感参数要调准，不在原理。</li>
+          <li><b>先不做：</b>真实生物力学仿真、三维、AI 直接生成视频。原版跳蚤本身也是纸偶的艺术改编，不是解剖仿真 —— MotionLab 要的是「带生物力学味道的约束」：蓄力、下沉、蹬地、收腿、缓冲、触地。</li>
+        </ul>
+        <p class="verdict">一条边界：火柴人通过 ≠ 成片通过。它查不了水彩质感和服装贴合（cosplay 那轮高位头饰悬浮就是例子）。目标是「动作不再返工」，不是「成片不再检查」。</p>
+      </article>
+      <article>
+        <span class="qnum">问题 3</span>
+        <h3>怎样和 AI 配合？</h3>
+        <p>分工只有一句话：<b>你当导演，AI 当翻译，工具当裁判</b>，三者不串位。</p>
+        <ul>
+          <li><b>你</b>只说意图、判手感：「这拳不够重」「落地太飘」。手感只有你能拍板。</li>
+          <li><b>AI</b> 把句子翻译成时间线草稿，并用人话解释参数。你说「不够重」，它只改数 —— 拉长蓄力、加命中停顿、加重落地缓冲 —— 不重画一遍。</li>
+          <li><b>工具</b>负责画出来、报犯规、锁定版本。你点头的那一版导出存档，谁都不许再改。</li>
+        </ul>
+        <p class="verdict">上面的一句话输入框就是这个配合的最小形态：关键词 → 预设 + 参数，每处改动都写明改了什么、为什么。</p>
+      </article>
+    </div>
+
+    <div class="roles">
+      <h3>复刻一场游戏战斗，在这里具体怎么干</h3>
+      <div class="rgrid">
+        <div><b>① 拆帧</b><p>把原战斗按 60 fps 拆开：前摇几帧、判定在哪一帧、命中停几帧、后摇多久、对方退多远。上面的帧数据面板就是拆完的样子。</p></div>
+        <div><b>② 对齐</b><p>0.25× 慢放 + 逐帧步进 + 残影轨迹，先把打击帧和对方受击帧对齐，再谈像不像。距离标尺在地面上，退多远看得见。</p></div>
+        <div><b>③ 调手感</b><p>「重」不是形容词，是三个数：蓄力更长、命中停顿更多帧、恢复更慢。一次只改一个数，改完立刻重播对比。</p></div>
+        <div><b>④ 锁定</b><p>调到接近就导出 JSON 存档。这一版就是「这场战斗」的定稿；以后交给 Claw 渲染，渲染端只执行，不再 reinterpret。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>MotionLab 0.1 · 中间环节先行，Claw 对接走 motionlab-0.1 格式</span>
+    <span>约束包路线：Claw 动作 → 生物力学味道 → 机械铰链 → 天体轨道，换约束不换引擎</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+var FPS = 60;
+var W = 900, H = 520, GROUND = 448;
+
+/* ---------- rig (fixed segment lengths) ---------- */
+var SEG = { torso:56, upperArm:34, forearm:32, thigh:46, shin:46, neck:16 };
+var RIG_NODES = ["pelvis","chest","head","shoulderR","elbowR","handR","shoulderL","elbowL","handL","hipR","kneeR","footR","hipL","kneeL","footL"];
+
+/* ---------- helpers ---------- */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,k){ return a+(b-a)*k; }
+function smooth(k){ return k*k*(3-2*k); }
+function easeOut(k){ return 1-Math.pow(1-k,3); }
+function easeIn(k){ return k*k*k; }
+/* keyframe track: pts = [[t,v],...] sorted; returns interpolated value */
+function track(pts,t){
+  if(t<=pts[0][0]) return pts[0][1];
+  for(var i=1;i<pts.length;i++){
+    if(t<=pts[i][0]){
+      var t0=pts[i-1][0], t1=pts[i][0], v0=pts[i-1][1], v1=pts[i][1];
+      var k = t1>t0 ? (t-t0)/(t1-t0) : 1;
+      return lerp(v0,v1,smooth(clamp(k,0,1)));
+    }
+  }
+  return pts[pts.length-1][1];
+}
+function $(id){ return document.getElementById(id); }
+
+/* ---------- presets: param schemas & defaults ---------- */
+var PRESETS = {
+  leap: {
+    label:"起跳预演",
+    feel:"<b>在调 Still / Life 的命脉：蓄力—释放—缓冲。</b>下蹲越深、蓄力越久，起跳越有「攒够了」的感觉；落地缓冲不够，整个人就像贴纸贴回纸面。下蹲深度和蓄力时长是一对：只深不久是蹲坑，只久不深是假装用力。",
+    params:[
+      {key:"charge", label:"蓄力时长", min:0.4, max:1.8, step:0.05, def:1.05, unit:"s", hint:"从开始下蹲到离地。跳蚤原片在这里花了 1 秒多 —— 生命感主要攒在这段。"},
+      {key:"depth",  label:"下蹲深度", min:0.15, max:1, step:0.05, def:0.6, unit:"", hint:"重心下沉的幅度。太浅，起跳没有来源；太深，腿会折得不像话。", fmt:function(v){return Math.round(v*100)+"%";}},
+      {key:"height", label:"起跳高度", min:40, max:210, step:5, def:130, unit:"px", hint:"抛物线顶点。高度决定滞空时间，滞空里要收腿，不然就是直着上下。"},
+      {key:"dist",   label:"跳跃距离", min:0, max:380, step:10, def:240, unit:"px", hint:"落点离起跳点多远。地面有标尺，落点会画出来给你对。"},
+      {key:"buffer", label:"落地缓冲", min:0, max:1, step:0.05, def:0.6, unit:"", hint:"落地后阻尼下沉 + 回弹的强度。0 = 硬着陆，1 = 果冻。原片用的是衰减震荡。", fmt:function(v){return Math.round(v*100)+"%";}}
+    ]
+  },
+  punch: {
+    label:"重拳对打",
+    feel:"<b>在调格斗游戏的「重」：前摇、命中停顿、后摇，三段的比例。</b>打击本身只要几帧，重量全在停顿里 —— 命中那一刻全场冻住几帧，观众的大脑会自动把这拳补得很重。后摇太短，这拳就轻得像摸了一下。",
+    params:[
+      {key:"windup", label:"前摇（蓄力）", min:0.15, max:0.95, step:0.05, def:0.45, unit:"s", hint:"出拳前把拳拉回去的时间。对手和观众都靠这段预判 —— 太短看不清，太长像慢动作。"},
+      {key:"strike", label:"出拳时长", min:0.05, max:0.3, step:0.01, def:0.11, unit:"s", hint:"从蓄力位到命中位。重拳也要快：慢的拳不叫重，叫迟到。"},
+      {key:"hitstop",label:"命中停顿", min:0, max:14, step:1, def:6, unit:"帧", hint:"命中后全场冻结的帧数（60fps）。0 帧 = 棉花，10+ 帧 = 夸张到卡通，先试 5–8。"},
+      {key:"recover",label:"后摇（恢复）", min:0.2, max:1.1, step:0.05, def:0.55, unit:"s", hint:"收拳回站姿的时间。后摇是破绽，也是重量的收据。"},
+      {key:"power",  label:"击退距离", min:0, max:90, step:2, def:38, unit:"px", hint:"对方被打退多远，含踉跄步。地面标尺上直接量。"}
+    ]
+  },
+  slash: {
+    label:"二连斩",
+    feel:"<b>在调连段的节奏差：第一下快、第二下重。</b>两下一样快一样重，观众只会记住「挥了两下」；第一下抢拍、短停顿，第二下蓄满、长停顿，连段才有句子感 —— 逗号和句号的区别。",
+    params:[
+      {key:"windup", label:"起手时长", min:0.2, max:0.9, step:0.05, def:0.4, unit:"s", hint:"拔剑举起的时间。二连斩的起手只给第一下，第二下靠惯性接。"},
+      {key:"gap",    label:"两斩间隔", min:0.08, max:0.6, step:0.02, def:0.22, unit:"s", hint:"第一斩收尾到第二斩出手。太短糊成一下，太长连段断气。"},
+      {key:"hitstop",label:"命中停顿", min:0, max:12, step:1, def:4, unit:"帧", hint:"每斩命中后的冻结帧数。第二斩自动比第一斩多 2 帧 —— 那就是「第二下更重」。"},
+      {key:"recover",label:"收剑后摇", min:0.25, max:1.1, step:0.05, def:0.6, unit:"s", hint:"第二斩后收剑回位。收得干净，连段才算说完。"},
+      {key:"power",  label:"击退距离", min:0, max:90, step:2, def:30, unit:"px", hint:"第二斩把对方送出去多远。第一斩只让他晃，第二斩才送人。"}
+    ]
+  }
+};
+
+var state = {
+  preset:"leap",
+  params:{},
+  t:0, playing:false, lastTs:0, shake:0, wasImpact:false
+};
+Object.keys(PRESETS).forEach(function(k){
+  state.params[k]={};
+  PRESETS[k].params.forEach(function(p){ state.params[k][p.key]=p.def; });
+});
+
+/* ---------- timelines: phases + pose ---------- */
+function buildTimeline(){
+  var P = state.params[state.preset];
+  if(state.preset==="leap"){
+    var idle=0.5, air=0.78, land=0.38, settle=0.65;
+    var t0=0,t1=idle,t2=t1+P.charge,t3=t2+air,t4=t3+land,t5=t4+settle;
+    return { duration:t5, impact:t2, phases:[
+      {name:"待机", start:t0,end:t1,color:"#5b6470"},
+      {name:"蓄力下蹲", start:t1,end:t2,color:"#c96a1e"},
+      {name:"滞空", start:t2,end:t3,color:"#d9381e"},
+      {name:"落地", start:t3,end:t4,color:"#7a4fd0"},
+      {name:"缓冲回稳", start:t4,end:t5,color:"#1d7a4f"}
+    ]};
+  }
+  if(state.preset==="punch"){
+    var i2=0.4, hs=P.hitstop/FPS, tA=i2, tB=tA+P.windup, tC=tB+P.strike, tD=tC+hs, tE=tD+P.recover, tF=tE+0.45;
+    return { duration:tF, impact:tC, phases:[
+      {name:"待机", start:0,end:tA,color:"#5b6470"},
+      {name:"前摇", start:tA,end:tB,color:"#c96a1e"},
+      {name:"出拳", start:tB,end:tC,color:"#d9381e"},
+      {name:"命中停顿", start:tC,end:tD,color:"#111318"},
+      {name:"后摇", start:tD,end:tE,color:"#7a4fd0"},
+      {name:"回稳", start:tE,end:tF,color:"#1d7a4f"}
+    ]};
+  }
+  var hs1=P.hitstop/FPS, hs2=(P.hitstop+2)/FPS;
+  var s0=0.4, s1=s0+P.windup, s2=s1+0.16, s3=s2+hs1, s4=s3+P.gap, s5=s4+0.22, s6=s5+hs2, s7=s6+P.recover, s8=s7+0.4;
+  return { duration:s8, impact:s2, impact2:s5, phases:[
+    {name:"待机", start:0,end:s0,color:"#5b6470"},
+    {name:"起手", start:s0,end:s1,color:"#c96a1e"},
+    {name:"第一斩", start:s1,end:s2,color:"#d9381e"},
+    {name:"停顿", start:s2,end:s3,color:"#111318"},
+    {name:"衔接", start:s3,end:s4,color:"#8a6d1f"},
+    {name:"第二斩", start:s4,end:s5,color:"#a81f08"},
+    {name:"停顿", start:s5,end:s6,color:"#111318"},
+    {name:"收剑", start:s6,end:s7,color:"#7a4fd0"},
+    {name:"回稳", start:s7,end:s8,color:"#1d7a4f"}
+  ]};
+}
+
+/* Two-bone IK for a planted foot (the Still/Life rule: IK while grounded, FK while airborne).
+   Knee is solved toward +x, the direction the figure faces. */
+function solveLeg(hip, foot){
+  var L1=SEG.thigh, L2=SEG.shin;
+  var dx=foot.x-hip.x, dy=foot.y-hip.y;
+  var dist=Math.hypot(dx,dy), maxD=L1+L2-0.5;
+  if(dist>maxD){ dx*=maxD/dist; dy*=maxD/dist; dist=maxD; foot={x:hip.x+dx, y:hip.y+dy}; }
+  if(dist<12){ dist=12; }
+  var ux=dx/dist, uy=dy/dist;
+  var cosA=clamp((L1*L1+dist*dist-L2*L2)/(2*L1*dist),-1,1);
+  var ang=Math.acos(cosA), ca=Math.cos(-ang), sa=Math.sin(-ang);
+  var kn={x:hip.x+(ux*ca-uy*sa)*L1, y:hip.y+(ux*sa+uy*ca)*L1};
+  return {kn:kn, ft:foot};
+}
+/* FK: angles in degrees. 0deg limb = straight down; torso lean 0 = upright.
+   footTargets (optional {R:{x,y}, L:{x,y}}) switches that leg to IK so the foot stays planted. */
+function fk(rootX, rootY, a, footTargets){
+  var rad=Math.PI/180;
+  var pelvis={x:rootX,y:rootY};
+  var chest={x:pelvis.x+Math.sin(a.lean*rad)*SEG.torso, y:pelvis.y-Math.cos(a.lean*rad)*SEG.torso};
+  var headC={x:chest.x+Math.sin((a.lean+a.head)*rad)*(SEG.neck+13), y:chest.y-Math.cos((a.lean+a.head)*rad)*(SEG.neck+13)};
+  function arm(side){ // side: +1 right(front), -1 left
+    var sh={x:chest.x+side*7, y:chest.y+2};
+    var sa = side>0?a.shR:a.shL, ea = side>0?a.elR:a.elL;
+    var el={x:sh.x+Math.sin(sa*rad)*SEG.upperArm, y:sh.y+Math.cos(sa*rad)*SEG.upperArm};
+    var ha={x:el.x+Math.sin((sa+ea)*rad)*SEG.forearm, y:el.y+Math.cos((sa+ea)*rad)*SEG.forearm};
+    return {sh:sh,el:el,ha:ha};
+  }
+  function leg(side){
+    var hip={x:pelvis.x+side*8, y:pelvis.y+2};
+    var target = footTargets ? (side>0?footTargets.R:footTargets.L) : null;
+    if(target){ var solved=solveLeg(hip,target); return {hip:hip, kn:solved.kn, ft:solved.ft}; }
+    var ha2 = side>0?a.hipR:a.hipL, ka = side>0?a.kneeR:a.kneeL;
+    var kn={x:hip.x+Math.sin(ha2*rad)*SEG.thigh, y:hip.y+Math.cos(ha2*rad)*SEG.thigh};
+    var total=ha2+ka;
+    var ft={x:kn.x+Math.sin(total*rad)*SEG.shin, y:kn.y+Math.cos(total*rad)*SEG.shin};
+    return {hip:hip,kn:kn,ft:ft};
+  }
+  var aR=arm(1), aL=arm(-1), lR=leg(1), lL=leg(-1);
+  return { pelvis:pelvis, chest:chest, head:headC,
+    shoulderR:aR.sh, elbowR:aR.el, handR:aR.ha, shoulderL:aL.sh, elbowL:aL.el, handL:aL.ha,
+    hipR:lR.hip, kneeR:lR.kn, footR:lR.ft, hipL:lL.hip, kneeL:lL.kn, footL:lL.ft };
+}
+function restAngles(){ return {lean:0,head:0,shR:6,elR:-8,shL:-6,elL:-8,hipR:3,kneeR:-4,ankR:0,hipL:-3,kneeL:-4,ankL:0}; }
+function standingPose(x, groundY){ var a=restAngles(); return fk(x, groundY-92, a); }
+
+function poseAt(t){
+  var P=state.params[state.preset], TL=buildTimeline();
+  var groundPelvis = GROUND-92;
+  if(state.preset==="leap"){
+    var idle=0.5, tC=idle+P.charge, air=0.78, tL=tC+air;
+    var startX=250, landX=startX+P.dist;
+    var rootX = track([[0,startX],[tC,startX],[tL,landX],[TL.duration,landX]], t);
+    var yOff;
+    if(t<tC){ // crouch down then hold
+      var k = t<idle?0:clamp((t-idle)/Math.max(P.charge,0.01),0,1);
+      yOff = P.depth*34*smooth(k);
+    } else if(t<tL){
+      var ak=(t-tC)/air;
+      yOff = P.depth*34*(1-ak*3<0?0:1-ak*3) - Math.sin(ak*Math.PI)*P.height + 0; // crouch releases fast, then parabola
+      yOff = lerp(P.depth*34, 0, clamp(ak*3,0,1)) - Math.sin(ak*Math.PI)*P.height;
+    } else if(t<tL+0.38){
+      var lk=(t-tL)/0.38;
+      yOff = Math.sin(lk*Math.PI)*P.buffer*26;
+    } else {
+      var sk=(t-(tL+0.38))/0.65;
+      yOff = Math.sin(sk*Math.PI*2.2)*P.buffer*7*(1-sk);
+    }
+    var a=restAngles();
+    if(t>=idle && t<tC){ var ck=smooth(clamp((t-idle)/P.charge,0,1));
+      a.lean=lerp(0,16,ck); a.hipR=lerp(3,-52,ck); a.kneeR=lerp(-4,-78,ck); a.hipL=lerp(-3,-46,ck); a.kneeL=lerp(-4,-70,ck);
+      a.shR=lerp(6,-38,ck); a.shL=lerp(-6,30,ck); a.head=lerp(0,8,ck);
+    } else if(t>=tC && t<tL){ var ak2=(t-tC)/air, tuck=Math.sin(ak2*Math.PI);
+      a.lean=lerp(16,-6,tuck); a.hipR=lerp(-52,-64,tuck); a.kneeR=lerp(-78,-96,tuck); a.hipL=lerp(-46,24,tuck); a.kneeL=lerp(-70,-18,tuck);
+      a.shR=lerp(-38,58,tuck); a.shL=lerp(30,-52,tuck); a.elR=-14; a.elL=-14;
+    } else if(t>=tL && t<tL+0.38){ var lk2=(t-tL)/0.38, sk2=Math.sin(lk2*Math.PI);
+      a.lean=lerp(-6,14,sk2); a.hipR=lerp(24,-38,sk2); a.kneeR=lerp(-18,-62,sk2); a.hipL=lerp(24,-30,sk2); a.kneeL=lerp(-18,-52,sk2);
+      a.shR=lerp(58,-20,sk2); a.shL=lerp(-52,16,sk2);
+    } else if(t>=tL+0.38){ var rk=clamp((t-(tL+0.38))/0.65,0,1), dk=(1-rk);
+      a.lean=14*dk*Math.cos(rk*6); a.hipR=3-8*dk; a.kneeR=-4-8*dk; a.hipL=-3-6*dk; a.kneeL=-4-6*dk; a.shR=6*dk; a.shL=-6*dk;
+    }
+    var baseY = GROUND-88; // IK stance height (slight knee bend at rest)
+    var feet = null;
+    if(t<tC){ feet={ R:{x:startX+24,y:GROUND}, L:{x:startX-30,y:GROUND} }; }
+    else if(t>=tL){ feet={ R:{x:landX+24,y:GROUND}, L:{x:landX-30,y:GROUND} }; }
+    return { main: fk(rootX, baseY+yOff, a, feet), target:null, prop:null, rootX:rootX, rootY:baseY+yOff };
+  }
+
+  if(state.preset==="punch"){
+    var P2=P, idle2=0.4, tW=idle2+P2.windup, tI=tW+P2.strike, tH=tI+P2.hitstop/FPS, tR=tH+P2.recover;
+    var ax=265;
+    var a=restAngles();
+    var shift=0;
+    if(t<idle2){ a.shR=6; }
+    else if(t<tW){ var wk=smooth((t-idle2)/P2.windup); a.shR=lerp(6,-118,wk); a.elR=lerp(-8,-96,wk); a.shL=lerp(-6,-26,wk); a.lean=lerp(0,9,wk); a.head=lerp(0,5,wk); shift=lerp(0,-9,wk); a.hipR=lerp(3,10,wk); a.hipL=lerp(-3,-12,wk); }
+    else if(t<tI){ var sk3=easeOut((t-tW)/P2.strike); a.shR=lerp(-118,84,sk3); a.elR=lerp(-96,-4,sk3); a.shL=lerp(-26,-8,sk3); a.lean=lerp(9,-7,sk3); shift=lerp(-9,44,sk3); }
+    else if(t<tH){ a.shR=84; a.elR=-4; a.lean=-7; shift=44; }
+    else if(t<tR){ var rk2=smooth((t-tH)/P2.recover); a.shR=lerp(84,6,rk2); a.elR=lerp(-4,-8,rk2); a.lean=lerp(-7,0,rk2); shift=lerp(44,0,rk2); a.shL=lerp(-8,-6,rk2); }
+    var main=fk(ax+shift, GROUND-88, a, { R:{x:ax+20,y:GROUND}, L:{x:ax-26,y:GROUND} });
+    // target — close enough that a stepped-in straight punch actually connects
+    var ta=restAngles(); var tx=452, tShift=0;
+    if(t>=tI){
+      var since=t-tI, kb=P2.power;
+      tShift = kb*easeOut(clamp(since/0.22,0,1)) - kb*0.35*smooth(clamp((since-0.35)/0.7,0,1));
+      var flinch=Math.exp(-since*3.2);
+      ta.lean=lerp(0,20,flinch); ta.head=lerp(0,16,flinch); ta.shR=lerp(6,44,flinch); ta.shL=lerp(-6,-40,flinch);
+      ta.hipR=lerp(3,14,flinch); ta.kneeR=lerp(-4,-16,flinch);
+    }
+    var target=fk(tx+tShift, GROUND-88, ta, { R:{x:tx+tShift+20,y:GROUND}, L:{x:tx+tShift-26,y:GROUND} });
+    return { main:main, target:target, prop:null, rootX:ax+shift, rootY:GROUND-88, impactT:tI };
+  }
+
+  // slash
+  var P3=P, i3=0.4, w1=i3+P3.windup, iA=w1+0.16, h1=iA+P3.hitstop/FPS, g1=h1+P3.gap, iB=g1+0.22, h2=iB+(P3.hitstop+2)/FPS, r1=h2+P3.recover;
+  var ax3=250, a3=restAngles(), shift3=0, blade=0; // blade: -1 up-ready, 0 down slash, etc (angle deg extra)
+  var swordAng=-160;
+  if(t<i3){ swordAng=-30; a3.shR=18; a3.elR=-70; }
+  else if(t<w1){ var wk3=smooth((t-i3)/P3.windup); a3.shR=lerp(18,-142,wk3); a3.elR=lerp(-70,-24,wk3); a3.lean=lerp(0,7,wk3); swordAng=lerp(-30,-168,wk3); shift3=lerp(0,-7,wk3); }
+  else if(t<iA){ var sA=easeOut((t-w1)/0.16); a3.shR=lerp(-142,66,sA); a3.elR=lerp(-24,-6,sA); a3.lean=lerp(7,-9,sA); swordAng=lerp(-168,38,sA); shift3=lerp(-7,14,sA); }
+  else if(t<h1){ a3.shR=66; a3.elR=-6; a3.lean=-9; swordAng=38; shift3=14; }
+  else if(t<g1){ var gk=smooth((t-h1)/P3.gap); a3.shR=lerp(66,-148,gk); a3.elR=lerp(-6,-20,gk); a3.lean=lerp(-9,8,gk); swordAng=lerp(38,-172,gk); shift3=lerp(14,-6,gk); }
+  else if(t<iB){ var sB=easeOut((t-g1)/0.22); a3.shR=lerp(-148,74,sB); a3.elR=lerp(-20,-4,sB); a3.lean=lerp(8,-12,sB); swordAng=lerp(-172,48,sB); shift3=lerp(-6,20,sB); }
+  else if(t<h2){ a3.shR=74; a3.elR=-4; a3.lean=-12; swordAng=48; shift3=20; }
+  else if(t<r1){ var rk3=smooth((t-h2)/P3.recover); a3.shR=lerp(74,18,rk3); a3.elR=lerp(-4,-70,rk3); a3.lean=lerp(-12,0,rk3); swordAng=lerp(48,-30,rk3); shift3=lerp(20,0,rk3); }
+  else { a3.shR=18; a3.elR=-70; swordAng=-30; }
+  var main3=fk(ax3+shift3, GROUND-88, a3, { R:{x:ax3+20,y:GROUND}, L:{x:ax3-26,y:GROUND} });
+  var ta3=restAngles(), tx3=466, tsh=0;
+  function react(since, amt){ if(since<0) return 0; return amt*Math.exp(-since*3)*1; }
+  if(t>=iA){ var fl=react(t-iA,0.45)+react(t-iB,1); tsh=P3.power*(easeOut(clamp((t-iB)/0.25,0,1)))*(t>=iB?1:0.25); ta3.lean=14*fl; ta3.head=12*fl; ta3.shR=36*fl; ta3.shL=-32*fl; }
+  var target3=fk(tx3+tsh, GROUND-88, ta3, { R:{x:tx3+tsh+20,y:GROUND}, L:{x:tx3+tsh-26,y:GROUND} });
+  var rad=Math.PI/180;
+  var tip={ x: main3.handR.x + Math.sin(swordAng*rad)*102, y: main3.handR.y + Math.cos(swordAng*rad)*102 };
+  return { main:main3, target:target3, prop:{from:main3.handR, to:tip}, rootX:ax3+shift3, rootY:groundPelvis, impactT:iA, impact2T:iB };
+}
+
+/* ---------- drawing ---------- */
+var canvas=$("stage"), ctx=canvas.getContext("2d");
+function fitCanvas(){
+  var dpr=window.devicePixelRatio||1;
+  var rect=canvas.getBoundingClientRect();
+  canvas.width=Math.round(rect.width*dpr); canvas.height=Math.round(rect.width*(520/900)*dpr);
+  ctx.setTransform(canvas.width/W,0,0,canvas.width/W,0,0);
+}
+function drawFigure(pose, color, opts){
+  opts=opts||{};
+  ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=opts.lw||5; ctx.lineCap="round"; ctx.lineJoin="round";
+  ctx.globalAlpha=opts.alpha!=null?opts.alpha:1;
+  function line(p,q){ ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
+  // far side limbs thinner/dimmer
+  ctx.globalAlpha=(opts.alpha!=null?opts.alpha:1)*0.55; ctx.lineWidth=(opts.lw||5)-1.4;
+  line(pose.shoulderL,pose.elbowL); line(pose.elbowL,pose.handL);
+  line(pose.hipL,pose.kneeL); line(pose.kneeL,pose.footL);
+  ctx.globalAlpha=opts.alpha!=null?opts.alpha:1; ctx.lineWidth=opts.lw||5;
+  line(pose.pelvis,pose.chest);
+  line(pose.hipR,pose.kneeR); line(pose.kneeR,pose.footR);
+  line(pose.shoulderR,pose.elbowR); line(pose.elbowR,pose.handR);
+  line(pose.chest,pose.head);
+  ctx.beginPath(); ctx.arc(pose.head.x, pose.head.y-13, 13.5, 0, Math.PI*2); ctx.stroke();
+  if(opts.joints){ ctx.fillStyle=color; RIG_NODES.forEach(function(n){ var p=pose[n]; if(p){ ctx.beginPath(); ctx.arc(p.x,p.y,2.6,0,Math.PI*2); ctx.fill(); } }); }
+  ctx.globalAlpha=1;
+}
+function render(){
+  var TL=buildTimeline();
+  var t=clamp(state.t,0,TL.duration);
+  var pose=poseAt(t);
+  ctx.clearRect(0,0,W,H);
+  // stage bg
+  var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#1d2026"); g.addColorStop(1,"#121317");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // shake
+  ctx.save();
+  if(state.shake>0.2 && $("tgShake").checked){ ctx.translate((Math.random()-0.5)*state.shake,(Math.random()-0.5)*state.shake*0.6); }
+  // grid
+  ctx.strokeStyle="rgba(255,255,255,0.055)"; ctx.lineWidth=1;
+  for(var x=0;x<=W;x+=50){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,GROUND); ctx.stroke(); }
+  for(var y=50;y<GROUND;y+=50){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  // ground + ruler
+  ctx.strokeStyle="#e8e6df"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(24,GROUND); ctx.lineTo(W-24,GROUND); ctx.stroke();
+  ctx.fillStyle="rgba(255,255,255,0.5)"; ctx.font="10px ui-monospace,Menlo,monospace"; ctx.textAlign="center";
+  for(var rx=100;rx<W-40;rx+=100){ ctx.fillRect(rx,GROUND,1,7); ctx.fillText(rx+"", rx, GROUND+22); }
+  ctx.textAlign="right"; ctx.fillText("地面标尺 · px", W-26, GROUND+22); ctx.textAlign="left";
+
+  // landing marker for leap
+  if(state.preset==="leap"){
+    var P=state.params.leap;
+    ctx.strokeStyle="rgba(255,90,60,0.75)"; ctx.setLineDash([5,5]); ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.moveTo(250+P.dist, GROUND-64); ctx.lineTo(250+P.dist, GROUND); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="rgba(255,140,110,0.95)"; ctx.font="11px ui-monospace,Menlo,monospace"; ctx.fillText("落点", 250+P.dist+7, GROUND-52);
+    // trajectory preview
+    ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.beginPath();
+    for(var k=0;k<=24;k++){ var ak=k/24; var px=lerp(250,250+P.dist,ak); var py=(GROUND-88)+lerp(P.depth*34,0,clamp(ak*3,0,1))-Math.sin(ak*Math.PI)*P.height; if(k===0)ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+    ctx.stroke();
+  }
+  // onion ghosts
+  if($("tgOnion").checked){
+    [0.14,0.07].forEach(function(dt,i){
+      var gt=t-dt; if(gt<0) return;
+      var gp=poseAt(gt);
+      drawFigure(gp.main,"rgba(255,255,255,"+(i===0?0.10:0.18)+")",{lw:4});
+      if(gp.target) drawFigure(gp.target,"rgba(255,255,255,"+(i===0?0.07:0.12)+")",{lw:4});
+    });
+  }
+  // hand trail
+  if($("tgTrail").checked){
+    ctx.strokeStyle="rgba(255,90,60,0.5)"; ctx.lineWidth=1.6; ctx.beginPath();
+    var started=false;
+    for(var s=Math.max(0,t-0.38); s<=t; s+=1/120){ var pp=poseAt(s); if(!started){ctx.moveTo(pp.main.handR.x,pp.main.handR.y); started=true;} else ctx.lineTo(pp.main.handR.x,pp.main.handR.y); }
+    ctx.stroke();
+  }
+  // figures
+  if(pose.target) drawFigure(pose.target,"#9fb4c8",{lw:5,joints:true});
+  drawFigure(pose.main,"#f2efe8",{lw:5.5,joints:true});
+  // impact flash + sword
+  var isImpact = Math.abs(t-TL.impact)<0.028 || (TL.impact2 && Math.abs(t-TL.impact2)<0.028);
+  if(pose.prop){
+    ctx.strokeStyle= isImpact? "#ffd9d0":"#d8b25c"; ctx.lineWidth=isImpact?5:3.6; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(pose.prop.from.x,pose.prop.from.y); ctx.lineTo(pose.prop.to.x,pose.prop.to.y); ctx.stroke();
+  }
+  if(isImpact && pose.target){
+    ctx.strokeStyle="rgba(255,90,60,0.95)"; ctx.lineWidth=2.4;
+    var cx=pose.target.chest.x, cy=pose.target.chest.y;
+    for(var i=0;i<8;i++){ var an=i/8*Math.PI*2+0.4; ctx.beginPath(); ctx.moveTo(cx+Math.cos(an)*20,cy+Math.sin(an)*20); ctx.lineTo(cx+Math.cos(an)*36,cy+Math.sin(an)*36); ctx.stroke(); }
+  }
+  if(isImpact && state.preset==="punch"){
+    ctx.strokeStyle="rgba(255,90,60,0.95)"; ctx.lineWidth=2.4;
+    var hx=pose.main.handR.x+8, hy=pose.main.handR.y;
+    for(var j=0;j<8;j++){ var an2=j/8*Math.PI*2; ctx.beginPath(); ctx.moveTo(hx+Math.cos(an2)*14,hy+Math.sin(an2)*14); ctx.lineTo(hx+Math.cos(an2)*28,hy+Math.sin(an2)*28); ctx.stroke(); }
+  }
+  // COM + contact marks
+  if($("tgCom").checked){
+    var com={x:(pose.main.pelvis.x+pose.main.chest.x)/2, y:(pose.main.pelvis.y+pose.main.chest.y)/2};
+    ctx.fillStyle="#ff5a3c"; ctx.beginPath(); ctx.arc(com.x,com.y,5,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(255,90,60,0.55)"; ctx.setLineDash([4,4]); ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(com.x,com.y); ctx.lineTo(com.x,GROUND); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="rgba(255,255,255,0.75)"; ctx.font="10.5px ui-monospace,Menlo,monospace"; ctx.fillText("重心", com.x+9, com.y+3);
+    [pose.main.footR,pose.main.footL].forEach(function(f){
+      if(Math.abs(f.y-GROUND)<7){ ctx.fillStyle="#4cc38a"; ctx.fillRect(f.x-11,GROUND-3,22,4); }
+    });
+  }
+  ctx.restore();
+
+  // HUD + scrub
+  var frame=Math.round(t*FPS);
+  $("hudTime").textContent="t = "+t.toFixed(2)+"s · F"+frame;
+  var ph=TL.phases.filter(function(p){return t>=p.start&&t<p.end;})[0]||TL.phases[TL.phases.length-1];
+  $("hudPhase").textContent=ph.name;
+  $("tcNow").textContent=t.toFixed(2); $("tcDur").textContent=TL.duration.toFixed(2);
+  if(document.activeElement!==$("scrub")) $("scrub").value=Math.round(t/TL.duration*1000);
+  Array.prototype.forEach.call($("phaseBar").children,function(el,i){
+    el.classList.toggle("on", TL.phases[i]===ph);
+  });
+  // impact shake trigger
+  if(state.playing && isImpact && !state.wasImpact){ state.shake=9; }
+  state.wasImpact=isImpact;
+  if(state.shake>0.2) state.shake*=0.82; else state.shake=0;
+}
+
+/* ---------- checks (sampled measurement) ---------- */
+function runChecks(){
+  var TL=buildTimeline(), N=Math.max(2,Math.round(TL.duration*FPS));
+  var maxDev=0, outOfFrame=0, footSlideMax=0, prev=null;
+  var contactPhases = state.preset==="leap" ? ["待机","蓄力下蹲","缓冲回稳"] : ["待机","前摇","待机"];
+  function phaseNameAt(tt){ var p=TL.phases.filter(function(x){return tt>=x.start&&tt<x.end;})[0]; return p?p.name:""; }
+  for(var i=0;i<=N;i++){
+    var t=i/FPS, pose=poseAt(t), m=pose.main;
+    // bone length deviation
+    function d(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+    var devs=[Math.abs(d(m.pelvis,m.chest)-SEG.torso),Math.abs(d(m.shoulderR,m.elbowR)-SEG.upperArm),Math.abs(d(m.elbowR,m.handR)-SEG.forearm),Math.abs(d(m.hipR,m.kneeR)-SEG.thigh),Math.abs(d(m.kneeR,m.footR)-SEG.shin)];
+    devs.forEach(function(v){ if(v>maxDev)maxDev=v; });
+    RIG_NODES.forEach(function(n){ var p=m[n]; if(p&&(p.x<8||p.x>W-8||p.y<8)) outOfFrame++; });
+    if(prev && contactPhases.indexOf(phaseNameAt(t))>=0){
+      [ "footR","footL" ].forEach(function(fn){
+        if(Math.abs(m[fn].y-GROUND)<7 && Math.abs(prev[fn].y-GROUND)<7){
+          var sl=Math.abs(m[fn].x-prev[fn].x); if(sl>footSlideMax)footSlideMax=sl;
+        }
+      });
+    }
+    prev=m;
+  }
+  var P=state.params[state.preset];
+  var items=[];
+  items.push({ok:maxDev<0.6, title:"段长恒定 · 最大偏差 "+maxDev.toFixed(2)+" px", sub:"FK 骨架锁死每段长度。原版跳蚤复刻失败的第一名原因，就是腿在动的过程中变长变短。"});
+  items.push({ok:footSlideMax<3.2, warn:footSlideMax>=3.2&&footSlideMax<6, title:"脚底打滑 · 接触期最大 "+footSlideMax.toFixed(1)+" px/帧", sub:footSlideMax<3.2?"脚沾地时基本钉住，观众会觉得有重量。":"接触期脚在蹭地 —— 减小下蹲/收势时腿的角度变化，或放慢那一段。"});
+  items.push({ok:outOfFrame===0, warn:outOfFrame>0, title:outOfFrame===0?"全程不出画":"出画采样点 × "+outOfFrame, sub:"Still / Life 的规矩：全程整只在画面里，不靠推近和裁切藏动作范围。"});
+  if(state.preset==="leap"){
+    var ratio=P.charge/ (P.charge+0.78);
+    items.push({ok:ratio>0.42, warn:ratio<=0.42, title:"蓄力占比 "+Math.round(ratio*100)+"%（蓄力 / 蓄力+滞空）", sub:ratio>0.42?"蓄力比飞行还久 —— 对的，生命感是攒出来的。":"蓄力太短，跳会像被弹射。把蓄力时长拉到 0.9s 以上再看。"});
+    items.push({ok:P.buffer>0.25, warn:P.buffer<=0.25, title:"落地缓冲 "+Math.round(P.buffer*100)+"%", sub:P.buffer>0.25?"落地有下沉回弹，不是贴纸落回纸面。":"缓冲接近 0 = 硬着陆，跳蚤会当场「死」给你看。"});
+  }
+  if(state.preset==="punch"||state.preset==="slash"){
+    var hs=state.params[state.preset].hitstop;
+    items.push({ok:hs>=3, warn:hs<3, title:"命中停顿 "+hs+" 帧", sub:hs>=3?"命中瞬间全场冻结，重量成立。":"停顿不足 3 帧，打击像摸到不是打中 —— 格斗游戏最忌这个。"});
+    var rec=state.params[state.preset].recover;
+    items.push({ok:rec>=0.35, warn:rec<0.35, title:"后摇 "+rec.toFixed(2)+"s（"+Math.round(rec*FPS)+" 帧）", sub:"后摇是重量的收据，也是留给对手的破绽。复刻战斗时这一项要和原作逐帧对。"});
+  }
+  $("checkList").innerHTML=items.map(function(it){
+    var cls=it.ok?"ok":(it.warn?"warn":"warn");
+    var ic=it.ok?"✓":"!";
+    return '<li><span class="ic '+cls+'">'+ic+'</span><span>'+it.title+"<small>"+it.sub+"</small></span></li>";
+  }).join("");
+  return {maxDev:+maxDev.toFixed(2), footSlide:+footSlideMax.toFixed(1), outOfFrame:outOfFrame};
+}
+
+/* ---------- frame data ---------- */
+function renderFrameData(){
+  var P=state.params[state.preset], TL=buildTimeline();
+  function f(sec){ return Math.round(sec*FPS); }
+  var cells=[];
+  if(state.preset==="leap"){
+    cells=[["总时长", f(TL.duration),"帧 · "+TL.duration.toFixed(2)+"s"],
+      ["蓄力", f(P.charge),"帧 · 下蹲攒劲"],
+      ["滞空", f(0.78),"帧 · 抛物线"],
+      ["落地缓冲", f(0.38+0.65),"帧 · 下沉+回稳"],
+      ["起跳高度", Math.round(P.height),"px · 标尺可量"],
+      ["跳跃距离", Math.round(P.dist),"px · 落点已标"]];
+  } else if(state.preset==="punch"){
+    cells=[["前摇 startup", f(P.windup),"帧 · 对手预判窗口"],
+      ["出拳 active", f(P.strike),"帧 · 到命中位"],
+      ["命中停顿", P.hitstop,"帧 · 全场冻结",1],
+      ["后摇 recovery", f(P.recover),"帧 · 破绽"],
+      ["总帧数", f(TL.duration),"帧 · "+TL.duration.toFixed(2)+"s"],
+      ["击退", Math.round(P.power),"px"]];
+  } else {
+    cells=[["起手 startup", f(P.windup),"帧"],
+      ["一斩→二斩间隔", f(P.gap+0.16),"帧 · 连段呼吸"],
+      ["命中停顿", P.hitstop+" / "+(P.hitstop+2),"帧 · 一斩 / 二斩",1],
+      ["收剑后摇", f(P.recover),"帧"],
+      ["总帧数", f(TL.duration),"帧 · "+TL.duration.toFixed(2)+"s"],
+      ["击退", Math.round(P.power),"px · 第二斩"]];
+  }
+  $("fdGrid").innerHTML=cells.map(function(c){
+    return '<div class="fd'+(c[3]?" hot":"")+'"><b>'+c[1]+'</b><span>'+c[0]+" · "+c[2]+"</span></div>";
+  }).join("");
+}
+
+/* ---------- params UI ---------- */
+function fmtVal(p,v){
+  if(p.fmt) return p.fmt(v);
+  return (p.step<1? (+v).toFixed(2):Math.round(v)) + (p.unit?" "+p.unit:"");
+}
+function renderParams(){
+  var defs=PRESETS[state.preset].params, P=state.params[state.preset];
+  $("paramList").innerHTML=defs.map(function(p){
+    return '<div class="param"><div class="prow"><label for="pm_'+p.key+'">'+p.label+'</label><output id="po_'+p.key+'">'+fmtVal(p,P[p.key])+'</output></div>'+
+      '<input type="range" id="pm_'+p.key+'" min="'+p.min+'" max="'+p.max+'" step="'+p.step+'" value="'+P[p.key]+'" />'+
+      "<p>"+p.hint+"</p></div>";
+  }).join("");
+  defs.forEach(function(p){
+    $("pm_"+p.key).addEventListener("input",function(e){
+      state.params[state.preset][p.key]=parseFloat(e.target.value);
+      $("po_"+p.key).textContent=fmtVal(p,parseFloat(e.target.value));
+      state.t=clamp(state.t,0,buildTimeline().duration);
+      syncAll(false);
+    });
+  });
+  $("feelText").innerHTML=PRESETS[state.preset].feel;
+}
+function renderPhaseBar(){
+  var TL=buildTimeline();
+  $("phaseBar").innerHTML=TL.phases.map(function(p){
+    var wdt=(p.end-p.start)/TL.duration*100;
+    return '<div style="background:'+p.color+';width:'+wdt+'%" title="'+p.name+" "+p.start.toFixed(2)+"–"+p.end.toFixed(2)+'s">'+(wdt>7?p.name:"")+"</div>";
+  }).join("");
+}
+
+/* ---------- JSON export / import ---------- */
+function buildJSON(){
+  var TL=buildTimeline(), P=state.params[state.preset];
+  var keyframes=[0,0.25,0.5,0.75,1].map(function(k){ return +(TL.duration*k).toFixed(3); });
+  // sample root track at phase boundaries + quarters, dedup
+  var times={}; TL.phases.forEach(function(p){ times[p.start.toFixed(3)]=1; times[p.end.toFixed(3)]=1; });
+  keyframes.forEach(function(x){ times[x]=1; });
+  var ts=Object.keys(times).map(Number).sort(function(a,b){return a-b;});
+  var rootTrack=ts.map(function(tt){ var pose=poseAt(clamp(tt,0,TL.duration)); return {t:+tt.toFixed(3), x:Math.round(pose.rootX), y:Math.round(pose.rootY)}; });
+  var events=TL.phases.map(function(p){ return {t:+p.start.toFixed(3), type:p.name}; });
+  events.push({t:+TL.impact.toFixed(3), type:"impact"});
+  if(TL.impact2) events.push({t:+TL.impact2.toFixed(3), type:"impact-2"});
+  events.sort(function(a,b){return a.t-b.t;});
+  var checks=runChecksSilent();
+  return {
+    version:"motionlab-0.1",
+    preset:state.preset,
+    fps:FPS,
+    duration:+TL.duration.toFixed(3),
+    rig:{ nodes:RIG_NODES, segments:SEG, note:"段长两边锁死；Claw 侧按节点名映射自己的关键节点" },
+    params:P,
+    phases:TL.phases.map(function(p){return {name:p.name,start:+p.start.toFixed(3),end:+p.end.toFixed(3)};}),
+    tracks:{ root:rootTrack },
+    events:events,
+    checks:checks
+  };
+}
+function runChecksSilent(){
+  // reuse last computed values without DOM churn: quick sample
+  var TL=buildTimeline(), maxDev=0;
+  for(var i=0;i<=Math.round(TL.duration*FPS);i+=3){
+    var m=poseAt(i/FPS).main;
+    function d(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+    var dev=Math.abs(d(m.pelvis,m.chest)-SEG.torso); if(dev>maxDev)maxDev=dev;
+  }
+  return { boneLengthMaxDeviationPx:+maxDev.toFixed(2), sampledAtFps:FPS };
+}
+function refreshJSON(){ $("jsonBox").value=JSON.stringify(buildJSON(),null,2); }
+function syncAll(refreshChecksToo){
+  renderPhaseBar(); renderFrameData(); refreshJSON(); render();
+  if(refreshChecksToo!==false) runChecks();
+}
+
+/* ---------- sentence parsing ---------- */
+function parseSentence(txt){
+  var notes=[], preset=null, mods={};
+  function has(){ for(var i=0;i<arguments.length;i++){ if(txt.indexOf(arguments[i])>=0) return true; } return false; }
+  if(has("跳","跃","蹦","leap","jump")) preset="leap";
+  if(has("剑","斩","刀","slash","sword")) preset="slash";
+  if(has("拳","打","击","punch")) preset="punch";
+  if(!preset) preset=state.preset;
+  var target=preset;
+  if(target==="leap"){
+    if(has("远","距离")) { mods.dist=320; notes.push(["跳跃距离 → 320px","「远」落成具体落点，地面标尺上能对"]); }
+    if(has("高")) { mods.height=175; notes.push(["起跳高度 → 175px",""]); }
+    if(has("缓冲","稳","软")) { mods.buffer=0.85; notes.push(["落地缓冲 → 85%","落地不缓冲，跳蚤当场失去生命感"]); }
+    if(has("蓄力","攒","深蹲")) { mods.charge=1.45; notes.push(["蓄力时长 → 1.45s","蓄力是这类动作的命脉，先拉满再回头减"]); }
+    if(has("快","迅速")) { mods.charge=0.55; notes.push(["蓄力时长 → 0.55s","「快」先动蓄力，不动滞空 —— 滞空由高度决定"]); }
+  }
+  if(target==="punch"){
+    if(has("重","狠","猛")) { mods.hitstop=9; mods.power=58; mods.recover=0.75; notes.push(["命中停顿 → 9 帧","「重」的第一杠杆是停顿，不是拳速"], ["击退 → 58px",""], ["后摇 → 0.75s","重拳收得慢才可信"]); }
+    if(has("快","迅速","连")) { mods.windup=0.25; mods.strike=0.08; notes.push(["前摇 → 0.25s",""], ["出拳 → 0.08s",""]); }
+    if(has("犹豫","迟疑","想想")) { mods.windup=0.85; notes.push(["前摇 → 0.85s","「犹豫」在动作语法里就是加长前摇 + 中途顿挫，先用加长近似"]); }
+    if(has("停顿")) { mods.hitstop=10; notes.push(["命中停顿 → 10 帧","你点名了停顿，给足"]); }
+    if(has("慢")) { mods.recover=0.9; notes.push(["后摇 → 0.9s",""]); }
+  }
+  if(target==="slash"){
+    if(has("重","狠")) { mods.hitstop=7; mods.power=52; notes.push(["命中停顿 → 7 帧（二斩 9 帧）","第二斩自动 +2 帧，那就是「更重」"], ["击退 → 52px",""]); }
+    if(has("快","连","二连","双")) { mods.gap=0.14; notes.push(["两斩间隔 → 0.14s","连段靠间隔抢拍"]); }
+    if(has("拔剑","起手")) { mods.windup=0.6; notes.push(["起手 → 0.6s","拔剑要看得见，才有仪式感"]); }
+  }
+  return {preset:target, mods:mods, notes:notes};
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll(".presets button").forEach(function(btn){
+  btn.addEventListener("click",function(){
+    state.preset=btn.getAttribute("data-preset"); state.t=0; state.playing=false; $("btnPlay").textContent="▶";
+    document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b===btn?"true":"false"); });
+    renderParams(); syncAll(true);
+  });
+});
+$("btnPlay").addEventListener("click",function(){
+  state.playing=!state.playing;
+  if(state.playing && state.t>=buildTimeline().duration-0.01) state.t=0;
+  $("btnPlay").textContent=state.playing?"⏸":"▶";
+});
+$("btnPrev").addEventListener("click",function(){ state.playing=false; $("btnPlay").textContent="▶"; state.t=clamp(state.t-1/FPS,0,buildTimeline().duration); render(); });
+$("btnNext").addEventListener("click",function(){ state.playing=false; $("btnPlay").textContent="▶"; state.t=clamp(state.t+1/FPS,0,buildTimeline().duration); render(); });
+$("scrub").addEventListener("input",function(e){ state.t=parseFloat(e.target.value)/1000*buildTimeline().duration; render(); });
+$("btnImpact").addEventListener("click",function(){ var TL=buildTimeline(); state.t=TL.impact; state.playing=false; $("btnPlay").textContent="▶"; render(); });
+["tgOnion","tgTrail","tgCom","tgShake"].forEach(function(id){ $(id).addEventListener("change",render); });
+
+function applySentence(){
+  var txt=$("sentenceInput").value.trim(); if(!txt) return;
+  var r=parseSentence(txt);
+  if(r.preset!==state.preset){
+    state.preset=r.preset;
+    document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===r.preset?"true":"false"); });
+    renderParams();
+  }
+  Object.keys(r.mods).forEach(function(k){ state.params[r.preset][k]=r.mods[k]; });
+  renderParams(); state.t=0; syncAll(true);
+  var note=$("parseNote");
+  var presetName=PRESETS[r.preset].label;
+  if(r.notes.length===0){ note.innerHTML="已切到「"+presetName+"」，但这句话里没解析出可落地的参数 —— 试着写明：远 / 高 / 重 / 快 / 缓冲 / 停顿。AI 翻译的边界就在这里：含糊的句子只配含糊的结果。"; }
+  else{
+    note.innerHTML="已生成「"+presetName+"」草稿，改动如下（每处都是参数，不是重画）：<br>"+r.notes.map(function(n){ return '<span class="tag">'+n[0]+"</span>"+(n[1]?'<span style="font-size:12px">'+n[1]+"</span> ":""); }).join("<br>");
+  }
+  note.style.display="block";
+  state.playing=true; $("btnPlay").textContent="⏸";
+}
+$("btnParse").addEventListener("click",applySentence);
+$("sentenceInput").addEventListener("keydown",function(e){ if(e.key==="Enter") applySentence(); });
+document.querySelectorAll(".examples button").forEach(function(b){
+  b.addEventListener("click",function(){ $("sentenceInput").value=b.getAttribute("data-sentence"); applySentence(); });
+});
+
+$("btnCopy").addEventListener("click",function(){
+  refreshJSON();
+  var box=$("jsonBox"); box.select();
+  function done(ok){ $("jsonMsg").textContent= ok? "已复制。这份 JSON 就是定稿 —— 存好它，渲染端只认这一版。" : "复制被浏览器拦了，文本已全选，手动复制一样有效。"; }
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(box.value).then(function(){done(true);},function(){ try{document.execCommand("copy"); done(true);}catch(e){done(false);} }); }
+  else { try{document.execCommand("copy"); done(true);}catch(e){done(false);} }
+});
+$("btnDownload").addEventListener("click",function(){
+  refreshJSON();
+  var blob=new Blob([$("jsonBox").value],{type:"application/json"});
+  var a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="motionlab-"+state.preset+"-0.1.json"; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+  $("jsonMsg").textContent="已下载 motionlab-"+state.preset+"-0.1.json。";
+});
+$("btnImport").addEventListener("click",function(){
+  try{
+    var obj=JSON.parse($("jsonBox").value);
+    if(obj.version!=="motionlab-0.1") throw new Error("版本不是 motionlab-0.1");
+    if(!PRESETS[obj.preset]) throw new Error("未知预设 "+obj.preset);
+    state.preset=obj.preset;
+    document.querySelectorAll(".presets button").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-preset")===obj.preset?"true":"false"); });
+    var defs=PRESETS[obj.preset].params;
+    defs.forEach(function(p){ if(typeof obj.params[p.key]==="number") state.params[obj.preset][p.key]=clamp(obj.params[p.key],p.min,p.max); });
+    renderParams(); state.t=0; syncAll(true);
+    $("jsonMsg").textContent="导入成功：已恢复「"+PRESETS[obj.preset].label+"」的参数。";
+  }catch(e){ $("jsonMsg").textContent="导入失败："+e.message+"。其余内容没有被改动。"; }
+});
+$("btnReset").addEventListener("click",function(){
+  PRESETS[state.preset].params.forEach(function(p){ state.params[state.preset][p.key]=p.def; });
+  renderParams(); state.t=0; syncAll(true);
+  $("jsonMsg").textContent="已重置「"+PRESETS[state.preset].label+"」为默认参数。";
+});
+
+/* ---------- playback loop ---------- */
+function loop(ts){
+  if(state.playing){
+    if(state.lastTs){ var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value); state.t+=dt;
+      var TL=buildTimeline();
+      if(state.t>=TL.duration){ if($("tgLoop").checked){ state.t=state.t%TL.duration; } else { state.t=TL.duration; state.playing=false; $("btnPlay").textContent="▶"; } }
+    }
+    state.lastTs=ts;
+  } else state.lastTs=ts;
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- init ---------- */
+fitCanvas();
+window.addEventListener("resize",function(){ fitCanvas(); render(); });
+renderParams();
+syncAll(true);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
