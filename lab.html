@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MotionLab v2 · 专业动作实验室</title>
+<title>MotionLab v2.1 · 专业动作实验室</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;background:#f2f2ef;color:#191b1e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.65}
@@ -45,7 +45,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>MotionLab v2 <span>·</span> 专业动作实验室</h1>
+  <h1>MotionLab v2.1 <span>·</span> 专业动作实验室</h1>
   <p class="sub">在战斗帧对接页之上加了专业实验室的三件套：虚拟运镜（焦距 / 推拉 / 跟随 / 摇移 / 升降 / 手持 / 荷兰角）、曲线（手速度与重心轨迹）与动作分析（峰值手速度、重心位移）。姿态数据与 combat.html 同源，运镜只改取景，不改帧数据——命中帧在哪一帧，运镜前后不变。</p>
   <div class="note"><b>来源与状态：</b>帧数据来自 claw-animation-base 候选批 combat-01（草稿 PR #9），<b>待 Codex 审，未入库</b>。本页只是预演对接，不等于正式词典条目；Codex 改了帧数，这里跟着改。击退距离是舞台示意像素，不是物理距离；真实手部接触证据仍按分镜另给。</div>
 
@@ -99,6 +99,27 @@
   <p class="sub">橙线是主角手速度（px/s），蓝线是重心 x 轨迹；红线是命中帧，黄色底是停顿段。曲线由姿态数据采样算出，不是手绘示意。</p>
   <canvas id="curves" width="900" height="180" style="width:100%;display:block;border-radius:8px"></canvas>
   <p class="sub" id="analysis"></p>
+
+  <p class="sub" id="editNote"></p>
+  <div style="margin-top:8px"><button class="btn" id="btnResetPhases" type="button">恢复候选值</button>
+  <span class="sub">曲线编辑改的是时间：在曲线图上拖动白圈（相位边界），该相位与下一相位的帧数此消彼长，命中帧随之重算；手速度数值本身不直接改，它由姿态算出。</span></div>
+
+  <h2>过渡查找（姿态库）</h2>
+  <p class="sub">连招不是等回稳再接下一招，而是取消后摇直接接。所以这里比的是 A 招的命中姿态 → B 招的起手姿态，在姿态库（6 招的全部关键帧＋站姿）里找最顺的中间姿态：分数 = 命中→中间 ＋ 中间→起手 的姿态距离（x、yOff、lean、肩角归一化后算）。分数越小越顺，但分数不是审美判断，先看前三再定；时长建议按分数给，0.2–0.5 秒。注意：所有招式起止都是站姿，直接比起止姿态会全得 0 分——那正是“回稳再接” trivial 的原因，本工具故意不那么比。</p>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+    <label>从 <select id="transFrom"><option value="jab">轻拳</option><option value="heavy" selected>重拳</option><option value="slash">双斩</option><option value="block">格挡反击</option><option value="leap">跳跃攻击</option><option value="whiff">落空惩罚</option></select></label>
+    <label>到 <select id="transTo"><option value="jab" selected>轻拳</option><option value="heavy">重拳</option><option value="slash">双斩</option><option value="block">格挡反击</option><option value="leap">跳跃攻击</option><option value="whiff">落空惩罚</option></select></label>
+    <button class="btn" id="btnFindTrans" type="button">查找过渡</button>
+  </div>
+  <div id="transResults" style="margin-top:10px"></div>
+  <textarea id="transSpecBox" spellcheck="false" aria-label="过渡方案 JSON" style="min-height:110px"></textarea>
+
+  <h2>视频参考对齐（本地播放，不上传）</h2>
+  <p class="sub">选一段本地参考视频（只在你的浏览器里播放，不上传到任何服务器），播到你认为的命中时刻点“标记参考命中时刻”，本页把它和当前招式的预演命中时刻并排对照，只报告差值，不自动改相位——改相位请用上面的曲线编辑，改完责任在改的人。</p>
+  <input type="file" id="refFile" accept="video/*" />
+  <video id="refVideo" controls style="width:100%;max-height:320px;background:#000;border-radius:8px;margin-top:8px"></video>
+  <div style="margin-top:8px"><button class="btn" id="btnMarkRef" type="button">标记参考命中时刻</button></div>
+  <div id="refCompare" style="margin-top:8px"></div>
 
   <h2>相位表（秒与帧都列出，命中帧由相位算出，不手写）</h2>
   <table><thead><tr><th>相位</th><th>起止（秒）</th><th>帧 @24</th><th>说明</th></tr></thead><tbody id="phaseRows"></tbody></table>
@@ -252,6 +273,54 @@ var MOVES = {
       {m:[280,0,0,6,-8,-6], o:[470,0]}
     ]},
 };
+var ORIG_PHASES = {};
+Object.keys(MOVES).forEach(function(k){
+  ORIG_PHASES[k] = MOVES[k].phases.map(function(ph){ return {name:ph.name, f:ph.f, note:ph.note}; });
+});
+function origHitFrames(moveKey){
+  var f = 0, hits = [];
+  ORIG_PHASES[moveKey].forEach(function(ph, i){
+    f += ph.f;
+    if(MOVES[moveKey].hitPhaseIdx.indexOf(i) >= 0) hits.push(f);
+  });
+  return hits;
+}
+function poseDist(a, b){
+  function n(v, s){ return v / s; }
+  var dx = n(a.m[0]-b.m[0], 100), dy = n(a.m[1]-b.m[1], 50), dl = n(a.m[2]-b.m[2], 20);
+  var ds = n(a.m[3]-b.m[3], 90), de = n(a.m[5]-b.m[5], 90);
+  var ox = n(a.o[0]-b.o[0], 100), ol = n(a.o[1]-b.o[1], 20);
+  return Math.sqrt(dx*dx+dy*dy+dl*dl+ds*ds+de*de+ox*ox+ol*ol);
+}
+function findTransitions(fromKey, toKey){
+  var fromMove = MOVES[fromKey], toMove = MOVES[toKey];
+  /* Chain point: from the FROM move's hit pose (not its settled rest pose —
+     every move starts and ends at rest, so rest-to-rest scores 0 and says
+     nothing), to the TO move's windup pose (end of its first phase).
+     Whiff is special: its action pose is the missed punch, not the counter hit. */
+  var fromIdx = (fromKey === "whiff") ? 2 : fromMove.hitPhaseIdx[0] + 1;
+  var fromPose = { m: fromMove.keys[fromIdx].m, o: fromMove.keys[fromIdx].o };
+  var toPose = { m: toMove.keys[1].m, o: toMove.keys[1].o };
+  var cands = [{ name:"站姿（中性）", pose:{ m:[280,0,0,6,-8,-6], o:[470,0] } }];
+  Object.keys(MOVES).forEach(function(k){
+    var mv = MOVES[k];
+    mv.keys.forEach(function(ky, ki){
+      if(ki >= mv.phases.length) return;
+      cands.push({ name: mv.label + "·" + mv.phases[ki].name, pose:{ m: ky.m, o: ky.o } });
+    });
+  });
+  /* Exclude poses identical to either endpoint: otherwise the "best bridge"
+     is trivially the endpoint itself (score = direct) and the finder says
+     nothing. The interesting answers are genuine intermediates. */
+  var scored = cands.filter(function(c){
+    return poseDist(c.pose, fromPose) > 1e-9 && poseDist(c.pose, toPose) > 1e-9;
+  }).map(function(c){
+    var d = poseDist(fromPose, c.pose) + poseDist(c.pose, toPose);
+    return { name: c.name, score: +d.toFixed(3) };
+  });
+  scored.sort(function(a, b){ return a.score - b.score; });
+  return { from: fromKey, to: toKey, direct: +poseDist(fromPose, toPose).toFixed(3), top: scored.slice(0, 3) };
+}
 function $(id){ return document.getElementById(id); }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function smooth(k){ k=clamp(k,0,1); return k*k*(3-2*k); }
@@ -507,6 +576,18 @@ function renderCurves(){
   lastAnalysis = { peakHandSpeedPxS: Math.round(maxS), peakTimeS: +ts[peakI].toFixed(3),
     peakFrame24: Math.floor(ts[peakI] * 24) + 1, rootDisplacementPx: Math.round(maxR - minR),
     hitFrames24: B.hitFrames };
+  B.phases.forEach(function(ph, idx){
+    if(idx === B.phases.length - 1) return;
+    var hx = ph.end / B.duration * 900;
+    c2.fillStyle = "#ffffff";
+    c2.beginPath(); c2.arc(hx, 90, 7, 0, Math.PI * 2); c2.fill();
+    c2.strokeStyle = "#191b1e"; c2.lineWidth = 2; c2.stroke();
+  });
+  var origHits = origHitFrames(state.move);
+  var editedNow = move.phases.some(function(ph, i){ return ph.f !== ORIG_PHASES[state.move][i].f; });
+  $("editNote").textContent = editedNow ?
+    "已改动：当前相位与 combat-01 候选不一致（候选命中帧 " + origHits.join("、") + " @24，当前 " + B.hitFrames.join("、") + " @24），导出带 edited:true；点“恢复候选值”可回到候选。" :
+    "未改动：当前相位与 combat-01 候选一致。";
   $("analysis").textContent = "峰值手速度 " + lastAnalysis.peakHandSpeedPxS + " px/s（第 " + lastAnalysis.peakFrame24 + " 帧 @24，t=" + lastAnalysis.peakTimeS + "s）· " +
     "重心位移 " + lastAnalysis.rootDisplacementPx + " px · 命中帧 " + B.hitFrames.join("、") + " @24 已在曲线上标红线，停顿段为黄色底。";
 }
@@ -673,6 +754,15 @@ function renderAll(){
     events.push({t:+B.phases[idx].start.toFixed(3), frame24:B.phases[idx].startF, type:"hitstop-start"});
     events.push({t:+B.phases[idx].end.toFixed(3), frame24:B.phases[idx].endF, type:"hitstop-end"});
   });
+  var rootFrames = [], minRx = 1e9, maxRx = -1e9;
+  for(var rf = 0; rf <= B.totalMoveFrames; rf++){
+    var rt = Math.min(rf / 24, B.duration);
+    var rp = poseAt(move, rt);
+    rootFrames.push({ f: rf, t: +rt.toFixed(3), x: Math.round(rp.main.x), yOff: Math.round(rp.main.yOff) });
+    if(rp.main.x < minRx) minRx = rp.main.x;
+    if(rp.main.x > maxRx) maxRx = rp.main.x;
+  }
+  var editedFlag = move.phases.some(function(ph, i){ return ph.f !== ORIG_PHASES[state.move][i].f; });
   var exp={
     version:"motionlab-0.1", preset:state.move,
     source:{ repo:"paimmme/claw-animation-base", branch:"creative-contrib/muse/combat-01",
@@ -682,6 +772,8 @@ function renderAll(){
     camera:{ lensMm:state.cam.lens, mode:state.cam.mode, focus:state.cam.focus,
              shakePx:state.cam.shake, rollDeg:state.cam.roll, thirds:state.cam.thirds },
     analysis:lastAnalysis,
+    edited:editedFlag, originalCandidateHitFrames24:origHitFrames(state.move),
+    rootMotion:{ frames:rootFrames, totalDisplacementPx: Math.round(maxRx - minRx) },
     phases:B.phases.map(function(p){ return {name:p.name, startS:+p.start.toFixed(3), endS:+p.end.toFixed(3), startFrame24:p.startF, endFrame24:p.endF}; }),
     events:events
   };
@@ -751,6 +843,70 @@ document.querySelectorAll("[data-shot]").forEach(function(b){
     camSync();
   };
 });
+var dragBoundary = null;
+function curvesX(e){
+  var r = $("curves").getBoundingClientRect();
+  return (e.clientX - r.left) / r.width * 900;
+}
+$("curves").addEventListener("mousedown", function(e){
+  var B = currentB();
+  var x = curvesX(e);
+  var best = null, bestD = 1e9;
+  B.phases.forEach(function(ph, idx){
+    if(idx === B.phases.length - 1) return;
+    var hx = ph.end / B.duration * 900;
+    var d = Math.abs(x - hx);
+    if(d < bestD){ bestD = d; best = idx; }
+  });
+  if(best !== null && bestD <= 14){
+    dragBoundary = best;
+    state.playing = false; $("btnPlay").textContent = "▶ 播放";
+  }
+});
+$("curves").addEventListener("mousemove", function(e){
+  if(dragBoundary === null) return;
+  var move = MOVES[state.move], B = currentB();
+  var x = curvesX(e);
+  var newEndFrame = Math.round(x / 900 * B.duration * 24);
+  var prevEnd = dragBoundary === 0 ? 0 : B.phases[dragBoundary - 1].endF;
+  var nextEnd = B.phases[dragBoundary + 1].endF;
+  newEndFrame = Math.max(prevEnd + 1, Math.min(nextEnd - 1, newEndFrame));
+  var oldEnd = B.phases[dragBoundary].endF;
+  if(newEndFrame === oldEnd) return;
+  var delta = newEndFrame - oldEnd;
+  move.phases[dragBoundary].f += delta;
+  move.phases[dragBoundary + 1].f -= delta;
+  renderAll();
+});
+window.addEventListener("mouseup", function(){ dragBoundary = null; });
+$("btnResetPhases").onclick = function(){
+  MOVES[state.move].phases = ORIG_PHASES[state.move].map(function(ph){ return {name:ph.name, f:ph.f, note:ph.note}; });
+  renderAll();
+};
+$("btnFindTrans").onclick = function(){
+  var r = findTransitions($("transFrom").value, $("transTo").value);
+  var dur = Math.max(0.2, Math.min(0.5, 0.2 + r.top[0].score * 0.1));
+  $("transResults").innerHTML = "直接衔接距离 " + r.direct + "；最顺的前三：<br>" +
+    r.top.map(function(t, i){ return (i+1) + ". " + t.name + "（分数 " + t.score + "）"; }).join("<br>") +
+    "<br>建议过渡时长 " + dur.toFixed(2) + "s（按分数缩放，0.2–0.5s）。注意：分数是姿态距离，不是审美判断；分数最小的不一定最好看，先看前三再定。";
+  $("transSpecBox").value = JSON.stringify({ version:"motionlab-transition-0.1", from:r.from, to:r.to,
+    via:r.top[0].name, viaScore:r.top[0].score, directScore:r.direct,
+    suggestedDurationS:+dur.toFixed(2), top3:r.top }, null, 2);
+};
+$("refFile").addEventListener("change", function(){
+  var f = $("refFile").files[0];
+  if(f){ $("refVideo").src = URL.createObjectURL(f); $("refCompare").textContent = "已载入本地视频：" + f.name + "（未上传）。"; }
+});
+$("btnMarkRef").onclick = function(){
+  var v = $("refVideo");
+  if(!v.src){ $("refCompare").textContent = "先选一段本地视频。"; return; }
+  var move = MOVES[state.move], B = currentB();
+  var refT = v.currentTime;
+  var prevT = B.phases[move.hitPhaseIdx[0]].end;
+  var diff = refT - prevT;
+  $("refCompare").innerHTML = "参考命中时刻 " + refT.toFixed(3) + "s · 预演第一命中帧 " + B.hitFrames[0] + " @24（t=" + prevT.toFixed(3) + "s）· 差值 " + (diff>=0?"+":"") + diff.toFixed(3) + "s。" +
+    (Math.abs(diff) < 0.042 ? "差值小于 1 帧 @24，基本对齐。" : "差值超过 1 帧：如需对齐，用曲线编辑拖动相位边界，或接受差值并记录在案——不要悄悄改候选值。");
+};
 function tick(ts){
   if(!state.playing) return;
   var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value);
