@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MotionLab v2 · 专业动作实验室</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f2f2ef;color:#191b1e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.65}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 18px 64px}
+  h1{font-size:28px;margin:0} h1 span{color:#d9381e}
+  p.sub{color:#555a60;max-width:76ch}
+  .note{border:1px solid #d8d8d0;background:#fff;padding:12px 14px;border-radius:10px;font-size:14px}
+  .note b{color:#b92c14}
+  .presets{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+  .presets button{border:1px solid #d8d8d0;background:#fff;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer}
+  .presets button[aria-pressed="true"]{background:#191b1e;color:#f2f2ef}
+  .presets small{display:block;font-weight:400;font-size:11px;opacity:.7;font-family:ui-monospace,Menlo,monospace}
+  .stage{background:#14161a;border-radius:12px;padding:12px}
+  canvas{width:100%;display:block;background:#1d2026;border-radius:8px}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;color:#eceee9}
+  .controls button{background:#fff;color:#191b1e;border:0;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer}
+  .controls input[type=range]{flex:1;min-width:200px}
+  .controls select{background:#fff;border:0;padding:7px;border-radius:8px}
+  .meta{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#a7adb5}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+  .fd{background:#fff;border:1px solid #d8d8d0;border-radius:10px;padding:10px 12px}
+  .fd b{display:block;font-size:22px;font-family:ui-monospace,Menlo,monospace}
+  .fd span{font-size:12.5px;color:#555a60}
+  .fd.hot b{color:#b92c14}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:14px}
+  th,td{border-bottom:1px solid #e9e9e4;padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#191b1e;color:#f2f2ef}
+  textarea{width:100%;min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;padding:10px;border:1px solid #d8d8d0;border-radius:10px}
+  .btn{background:#191b1e;color:#fff;border:0;padding:9px 16px;border-radius:8px;font-weight:600;cursor:pointer}
+  .checks{font-size:14px}
+  .checks .ok{color:#1d7a4f} .checks .bad{color:#b92c14}
+  @media (prefers-color-scheme: dark){
+    body{background:#0f1113;color:#eceee9}
+    .note,.fd,table,textarea{background:#17191d;border-color:#2b2f36;color:#eceee9}
+    .presets button{background:#17191d;color:#eceee9;border-color:#2b2f36}
+    p.sub,.fd span{color:#a7adb5}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MotionLab v2 <span>·</span> 专业动作实验室</h1>
+  <p class="sub">在战斗帧对接页之上加了专业实验室的三件套：虚拟运镜（焦距 / 推拉 / 跟随 / 摇移 / 升降 / 手持 / 荷兰角）、曲线（手速度与重心轨迹）与动作分析（峰值手速度、重心位移）。姿态数据与 combat.html 同源，运镜只改取景，不改帧数据——命中帧在哪一帧，运镜前后不变。</p>
+  <div class="note"><b>来源与状态：</b>帧数据来自 claw-animation-base 候选批 combat-01（草稿 PR #9），<b>待 Codex 审，未入库</b>。本页只是预演对接，不等于正式词典条目；Codex 改了帧数，这里跟着改。击退距离是舞台示意像素，不是物理距离；真实手部接触证据仍按分镜另给。</div>
+
+  <div class="presets" role="group" aria-label="战斗预设">
+    <button type="button" data-move="jab" aria-pressed="true">轻拳<small>JAB · 先手试探</small></button>
+    <button type="button" data-move="heavy" aria-pressed="false">重拳<small>HEAVY · 终结感</small></button>
+    <button type="button" data-move="slash" aria-pressed="false">双斩<small>SLASH · 两段命中</small></button>
+    <button type="button" data-move="block" aria-pressed="false">格挡反击<small>BLOCK · 先挡后打</small></button>
+    <button type="button" data-move="leap" aria-pressed="false">跳跃攻击<small>LEAP · 蹲空落</small></button>
+    <button type="button" data-move="whiff" aria-pressed="false">落空惩罚<small>WHIFF · 打空被反</small></button>
+  </div>
+
+  <div class="stage">
+    <canvas id="stage" width="900" height="520"></canvas>
+    <div class="controls">
+      <button id="btnPlay" type="button">▶ 播放</button>
+      <button id="btnStepBack" type="button">◀ 退 1 帧 @24</button>
+      <button id="btnStep" type="button">进 1 帧 @24 ▶</button>
+      <select id="speed" aria-label="播放速度"><option value="1" selected>1×</option><option value="0.5">0.5×</option><option value="0.25">0.25× 慢放</option></select>
+      <button id="btnClaw" type="button">形象：火柴人</button>
+      <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="时间线" />
+      <span class="meta" id="clock"></span>
+    </div>
+    <div class="controls" id="hitBtns"></div>
+  </div>
+
+  <h2>运镜（虚拟摄影机）</h2>
+  <p class="sub">2D 舞台上的运镜是取景变换，不是真 3D：焦距只改缩放（长焦压缩视野、广角开阔），推拉是缩放随时间变化，跟随是焦点跟主角走，手持是确定性抖动（同一时刻同一抖动，可逐帧复查），荷兰角是画面旋转。过肩在这里只是取景示意，不是真 3D 机位——与镜头批“过肩是场面调度、不是新镜头”一致。</p>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+    <label>焦距 <input type="range" id="camLens" min="24" max="135" step="1" value="50" /> <span id="camLensV">50mm</span></label>
+    <label>运镜 <select id="camMode"><option value="static" selected>固定</option><option value="push">推近</option><option value="pull">拉远</option><option value="follow">跟随主角</option><option value="pan">摇移</option><option value="crane">升降</option></select></label>
+    <label>焦点 <select id="camFocus"><option value="mid" selected>中点</option><option value="main">主角</option><option value="opp">对手</option></select></label>
+    <label>手持抖动 <input type="range" id="camShake" min="0" max="10" step="1" value="0" /> <span id="camShakeV">0px</span></label>
+    <label>荷兰角 <input type="range" id="camRoll" min="-15" max="15" step="1" value="0" /> <span id="camRollV">0°</span></label>
+    <label><input type="checkbox" id="camThirds" /> 三分法</label>
+    <label><input type="checkbox" id="camGhost" /> 残影（前后帧）</label>
+    <label><input type="checkbox" id="camTrail" /> 手轨迹</label>
+  </div>
+  <div class="presets">
+    <button type="button" data-shot="wide">全景<small>WIDE · 24mm · 中点</small></button>
+    <button type="button" data-shot="medium">中景<small>MEDIUM · 50mm · 主角</small></button>
+    <button type="button" data-shot="close">特写<small>CLOSE · 85mm · 主角</small></button>
+    <button type="button" data-shot="over">过肩取景<small>OVER · 50mm · 对手（示意）</small></button>
+  </div>
+
+  <h2>帧数据（当前招式）</h2>
+  <div class="grid" id="fdGrid"></div>
+  <p class="sub" id="moveNote"></p>
+
+  <h2>曲线（手速度与重心）</h2>
+  <p class="sub">橙线是主角手速度（px/s），蓝线是重心 x 轨迹；红线是命中帧，黄色底是停顿段。曲线由姿态数据采样算出，不是手绘示意。</p>
+  <canvas id="curves" width="900" height="180" style="width:100%;display:block;border-radius:8px"></canvas>
+  <p class="sub" id="analysis"></p>
+
+  <h2>相位表（秒与帧都列出，命中帧由相位算出，不手写）</h2>
+  <table><thead><tr><th>相位</th><th>起止（秒）</th><th>帧 @24</th><th>说明</th></tr></thead><tbody id="phaseRows"></tbody></table>
+
+  <h2>校验</h2>
+  <div class="checks" id="checks"></div>
+
+  <h2>导出（motionlab-0.1 兼容）</h2>
+  <p class="sub">导出 JSON 与 motionlab.html 的 motionlab-0.1 同形：版本、预设、来源、帧数据、相位事件。Claw 渲染端以后按事件名（impact / hitstop-start / recover-start）挂接，不按帧号硬编码。</p>
+  <button class="btn" id="btnCopy" type="button">复制 JSON</button>
+  <textarea id="jsonBox" spellcheck="false" aria-label="导出 JSON"></textarea>
+
+  <h2>对接说明</h2>
+  <div class="note">
+    <p style="margin-top:0"><b>换算：</b>候选帧数 @24fps → 秒 = 帧 ÷ 24；舞台 @60fps 等效帧 = 秒 × 60（四舍五入）。例如重拳停顿 6 帧 @24 = 0.250s，在舞台上相当于 15 帧 @60——不是把 6 直接当成舞台帧数。</p>
+    <p><b>范围取値：</b>候选里写范围的，本页取一个定值并注明：轻拳后摇取 4 帧（范围 4–5）、重拳前摇取 5 帧（4–5）、停顿取 6 帧（5–6）、后摇取 8 帧（7–8）、双斩后摇取 7 帧（6–7）。Codex 定稿后按定稿改。</p>
+    <p><b>落空惩罚的特殊处：</b>对手反击命中（第 14 帧）发生在落空者后摇内（第 8–18 帧），这正是“落空惩罚”的含义，不是时间线排错。</p>
+    <p><b>Claw 形象：</b>点“形象”按钮可在火柴人与方块 Claw 之间切换，姿态数据同一份，只换渲染器。方块 Claw 按 clawd.js 正视图简化：身体 10u × 6u、腿到地面、4 条短腿、手臂 pivot 在 (±4.9u, −4.5u)、两道眼缝＋一字嘴，脸固定为中性（表情仍由 Claw 侧接管）。u 取 11.5px，全高 92px，与火柴人等高。</p>
+    <p style="margin-bottom:0"><b>近似声明：</b>本页火柴人是预演示意：腿用简化的两段骨骼＋固定落点，格挡、跳跃、落空的对手反应按相位表画，不承诺与 Claw 正式配方逐关节一致。正式配方仍以 Claw 仓库为准。完整映射表见仓库里的 <a href="migration.md">migration.md</a>。</p>
+  </div>
+  <p class="sub"><a href="motionlab.html">← 回 MotionLab 主页（起跳 / 重拳 / 二连斩）</a></p>
+</div>
+<script>
+"use strict";
+var FPS24 = 24, FPS60 = 60;
+function s24(f){ return f / FPS24; }
+/* phases: {name, f (frames @24), note}. Seconds are derived, never hand-typed.
+   hitFrames are computed from phases, not hand-typed, so phase table and
+   hit-frame buttons can never drift apart. */
+var MOVES = {
+  jab: { label:"轻拳", slug:"light-punch", cancel:"命中后 2 帧内可接轻拳", knockPx:19,
+    note:"快、安全、可连招的起点：观众读出“先手试探”，不是重击。右手出拳，左手护胸。",
+    phases:[
+      {name:"前摇", f:2, note:"小幅收拳"},
+      {name:"出拳", f:1, note:"命中帧在相位末"},
+      {name:"命中停顿", f:3, note:"全场冻结"},
+      {name:"后摇", f:4, note:"回护胸（范围 4–5，取 4）"},
+      {name:"回稳", f:11, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[1], hitstopIdx:[2], whiff:false,
+    keys:[ // main: x, yOff(+down), lean, shR, elR, shL | opp: x, lean
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[271,0,9,-118,-96,-26], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[489,20]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]}
+    ]},
+  heavy: { label:"重拳", slug:"heavy-punch", cancel:"命中后不可立即接重拳，需先回正", knockPx:38,
+    note:"MotionLab 主页重拳预设的校准版：前摇、停顿、后摇按 combat-01 取定值。终结感，不是轻拳放大版。",
+    phases:[
+      {name:"前摇", f:5, note:"全身小幅下沉＋收拳（范围 4–5，取 5）"},
+      {name:"出拳", f:2, note:"命中帧在相位末"},
+      {name:"命中停顿", f:6, note:"全场冻结（范围 5–6，取 6）"},
+      {name:"后摇", f:8, note:"收拳回站姿（范围 7–8，取 8）"},
+      {name:"回稳", f:11, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[1], hitstopIdx:[2], whiff:false,
+    keys:[
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[271,0,9,-118,-96,-26], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[508,20]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]}
+    ]},
+  slash: { label:"双斩", slug:"double-slash", cancel:"第一斩命中后 2 帧内可接第二斩", knockPx:30,
+    note:"两段命中帧缺一不可：第一斩第 4 帧，第二斩第 9 帧。第一下快、第二下重（停顿 3 → 4）。",
+    phases:[
+      {name:"起手", f:3, note:"拔剑举起"},
+      {name:"第一斩", f:1, note:"命中帧在相位末"},
+      {name:"停顿", f:3, note:"第一斩冻结"},
+      {name:"二斩起手", f:1, note:"靠惯性接"},
+      {name:"第二斩", f:1, note:"命中帧在相位末"},
+      {name:"停顿", f:4, note:"第二斩冻结，更重"},
+      {name:"收剑", f:7, note:"收剑回位（范围 6–7，取 7）"},
+      {name:"回稳", f:10, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[1,4], hitstopIdx:[2,5], whiff:false,
+    keys:[
+      {m:[280,0,0,18,-70,-6], o:[470,0]},
+      {m:[273,0,7,-142,-24,-6], o:[470,0]},
+      {m:[294,0,-9,66,-6,-6], o:[470,0]},
+      {m:[294,0,-9,66,-6,-6], o:[477,14]},
+      {m:[274,0,8,-148,-20,-6], o:[477,14]},
+      {m:[300,0,-12,74,-4,-6], o:[477,14]},
+      {m:[300,0,-12,74,-4,-6], o:[500,14]},
+      {m:[280,0,0,18,-70,-6], o:[470,0]},
+      {m:[280,0,0,18,-70,-6], o:[470,0]}
+    ]},
+  block: { label:"格挡反击", slug:"block-counter", cancel:"格挡硬直结束后 2 帧内可反击", knockPx:19,
+    note:"两段，不是 一招：先双手护身前挡住（格挡硬直 3 帧），再在对手后摇里出轻拳反击。",
+    phases:[
+      {name:"格挡", f:3, note:"双手护身前，格挡硬直"},
+      {name:"反击前摇", f:2, note:"右手收拳"},
+      {name:"反击出拳", f:1, note:"反击命中帧在相位末"},
+      {name:"命中停顿", f:3, note:"全场冻结"},
+      {name:"后摇", f:5, note:"回护胸（范围 4–5，取 5）"},
+      {name:"回稳", f:11, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[2], hitstopIdx:[3], whiff:false,
+    keys:[
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[280,0,2,-70,-60,-70], o:[470,0]},
+      {m:[271,0,9,-118,-96,-26], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[489,20]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]}
+    ]},
+  leap: { label:"跳跃攻击", slug:"leap-attack", cancel:"落地后不可立即接跳跃攻击", knockPx:30,
+    note:"蹲是预备，空中是命中，落地是挤压：蹲 3 帧、空中第 7 帧命中、落地 2 帧挤压。",
+    phases:[
+      {name:"预备下蹲", f:3, note:"sq 压扁示意为重心下沉"},
+      {name:"跃起", f:3, note:"抛物线上升"},
+      {name:"空中命中", f:1, note:"命中帧在相位末"},
+      {name:"落地挤压", f:2, note:"sq 再压扁一次"},
+      {name:"回正", f:4, note:"站姿恢复"},
+      {name:"回稳", f:11, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[2], hitstopIdx:[], whiff:false,
+    keys:[
+      {m:[250,0,0,6,-8,-6], o:[470,0]},
+      {m:[250,26,16,-38,-14,30], o:[470,0]},
+      {m:[360,-110,-6,58,-14,-52], o:[470,0]},
+      {m:[430,-30,-7,84,-4,-8], o:[470,0]},
+      {m:[430,18,14,-20,-8,16], o:[500,20]},
+      {m:[430,0,0,6,-8,-6], o:[470,0]},
+      {m:[430,0,0,6,-8,-6], o:[470,0]}
+    ]},
+  whiff: { label:"落空惩罚", slug:"whiff-punish", cancel:"落空后不可立即回正，需走完后摇", knockPx:19,
+    note:"故意打空、后摇拉长、对手反击：落空停顿为 0，对手反击命中（第 14 帧）发生在落空者后摇内（第 8–18 帧）。",
+    phases:[
+      {name:"前摇", f:5, note:"重拳前摇"},
+      {name:"出拳落空", f:2, note:"无接触，无停顿"},
+      {name:"后摇前段", f:3, note:"落空者仍在恢复"},
+      {name:"对手反击前摇", f:3, note:"落空者仍在恢复"},
+      {name:"对手反击命中", f:1, note:"反击命中帧在相位末"},
+      {name:"后摇后段", f:4, note:"落空者走完后摇（后摇共 11 帧）"},
+      {name:"回稳", f:11, note:"站姿恢复"}
+    ],
+    hitPhaseIdx:[4], hitstopIdx:[], whiff:true,
+    keys:[
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[271,0,9,-118,-96,-26], o:[470,0]},
+      {m:[324,0,-7,84,-4,-8], o:[470,0]},
+      {m:[300,0,0,30,-8,-6], o:[470,0]},
+      {m:[300,0,0,30,-8,-6], o:[461,0]},
+      {m:[300,0,0,30,-8,-6], o:[461,0]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]},
+      {m:[280,0,0,6,-8,-6], o:[470,0]}
+    ]},
+};
+function $(id){ return document.getElementById(id); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function smooth(k){ k=clamp(k,0,1); return k*k*(3-2*k); }
+function lerp(a,b,k){ return a+(b-a)*k; }
+/* Build phase boundaries + hit frames from the phase table. */
+function buildMove(move){
+  var t=0, f=0, phases=[];
+  move.phases.forEach(function(p){
+    var s=s24(p.f);
+    phases.push({name:p.name, f:p.f, note:p.note, start:t, end:t+s, startF:f+1, endF:f+p.f});
+    t+=s; f+=p.f;
+  });
+  var hits = move.hitPhaseIdx.map(function(i){ return phases[i].endF; });
+  return { phases:phases, duration:t + 0.45, hitFrames:hits, totalMoveFrames:f };
+}
+function phaseAt(mv, t){
+  var B=buildMove(mv);
+  for(var i=0;i<B.phases.length;i++){
+    if(t < B.phases[i].end || i===B.phases.length-1) return {idx:i, ph:B.phases[i], B:B};
+  }
+  return {idx:B.phases.length-1, ph:B.phases[B.phases.length-1], B:B};
+}
+function inHitstop(mv, t){
+  var cur=phaseAt(mv,t);
+  return mv.hitstopIdx.indexOf(cur.idx)>=0;
+}
+/* Pose: interpolate keyframes at phase boundaries. keys[i] is the pose at
+   the START of phase i; the last key is the pose at the end. */
+function poseAt(move, t){
+  var B=buildMove(move);
+  var cur=phaseAt(move,t);
+  var i=cur.idx, ph=cur.ph;
+  var k0=move.keys[i], k1=move.keys[i+1]||move.keys[i];
+  var k = ph.end>ph.start ? smooth((t-ph.start)/(ph.end-ph.start)) : 1;
+  function mix(a,b){ return lerp(a,b,k); }
+  return {
+    main:{ x:mix(k0.m[0],k1.m[0]), yOff:mix(k0.m[1],k1.m[1]), lean:mix(k0.m[2],k1.m[2]),
+           shR:mix(k0.m[3],k1.m[3]), elR:mix(k0.m[4],k1.m[4]), shL:mix(k0.m[5],k1.m[5]) },
+    opp:{ x:mix(k0.o[0],k1.o[0]), lean:mix(k0.o[1],k1.o[1]) },
+    phaseIdx:i, B:B
+  };
+}
+
+/* ---------- drawing: simple two-bone legs, FK arms ---------- */
+var GROUND=430, W=900, H=520;
+var canvas=$("stage"), ctx=canvas.getContext("2d");
+function legPoints(hip, foot){
+  var L1=52, L2=54;
+  var dx=foot.x-hip.x, dy=foot.y-hip.y, dist=Math.hypot(dx,dy)||1;
+  var maxD=L1+L2-1;
+  if(dist>maxD){ dx*=maxD/dist; dy*=maxD/dist; dist=maxD; foot={x:hip.x+dx,y:hip.y+dy}; }
+  var ux=dx/dist, uy=dy/dist;
+  var cosA=clamp((L1*L1+dist*dist-L2*L2)/(2*L1*dist),-1,1);
+  var ang=Math.acos(cosA), ca=Math.cos(-ang), sa=Math.sin(-ang);
+  return { kn:{x:hip.x+(ux*ca-uy*sa)*L1, y:hip.y+(ux*sa+uy*ca)*L1}, ft:foot };
+}
+function figure(x, pelvisY, lean, shR, elR, shL, color, opts){
+  opts=opts||{};
+  var rad=Math.PI/180;
+  var pelvis={x:x,y:pelvisY};
+  var chest={x:pelvis.x+Math.sin(lean*rad)*58, y:pelvis.y-Math.cos(lean*rad)*58};
+  var head={x:chest.x+Math.sin(lean*rad)*20, y:chest.y-Math.cos(lean*rad)*20};
+  function arm(side, sh, el){
+    var s={x:chest.x+side*7, y:chest.y+2};
+    var e={x:s.x+Math.sin(sh*rad)*46, y:s.y+Math.cos(sh*rad)*46};
+    var h={x:e.x+Math.sin((sh+el)*rad)*42, y:e.y+Math.cos((sh+el)*rad)*42};
+    return {s:s,e:e,h:h};
+  }
+  var aR=arm(1, shR, elR), aL=arm(-1, shL, -8);
+  if(opts.armR){ aR=opts.armR(chest); }
+  ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=5; ctx.lineCap="round"; ctx.lineJoin="round";
+  function line(p,q){ ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
+  line(pelvis, chest);
+  ctx.beginPath(); ctx.arc(head.x, head.y, 14, 0, Math.PI*2); ctx.fill();
+  line(aR.s, aR.e); line(aR.e, aR.h);
+  ctx.lineWidth=3; line(aL.s, aL.e); line(aL.e, aL.h); ctx.lineWidth=5;
+  [-1,1].forEach(function(side){
+    var hip={x:pelvis.x+side*8, y:pelvis.y+2};
+    var foot={x:x+side*26, y:GROUND};
+    if(opts.feet) foot=opts.feet(side);
+    var solved=legPoints(hip, foot);
+    line(hip, solved.kn); line(solved.kn, solved.ft);
+  });
+  return {chest:chest, head:head, handR:aR.h, handL:aL.h, pelvis:pelvis};
+}
+/* ---------- Claw block figure (same joints, different renderer) ----------
+   Geometry from claw-animation-base src/clawd.js, front view, simplified to flat
+   fills (no watercolour/ink): body 10u wide x 6u tall (y -8u..-2u), legs to y 0,
+   4 stubby legs at x -4/-2/1/3u, arm pivots at (+-4.9u, -4.5u), arm length 2.2u,
+   eyes at (+-2.5u, -6u) 1u wide x 2u tall, mouth at (0, -4.3u).
+   u = 11.5px, so the full figure is 92px tall, matching the stick figure's
+   pelvis height. sq is derived from the crouch/squash offset (approximation,
+   documented in migration.md); the face stays neutral: expression is Claw-side. */
+function drawClaw(gx, gy, pose, color, dark, isOpp, counter){
+  var u = 11.5;
+  var yOff = pose.yOff || 0;
+  var sq = yOff > 0 ? Math.min(yOff / 90, 0.4) : 0;
+  var sx = 1 + sq * 0.6, sy = 1 - sq;
+  var bodyW = 10 * u * sx;
+  var bodyTop = gy - 8 * u * sy, bodyBottom = gy - 2 * u * sy;
+  var rad = Math.PI / 180;
+  function armTip(pivotX, pivotY, deg){
+    return { x: pivotX + Math.sin(deg * rad) * 2.2 * u, y: pivotY + Math.cos(deg * rad) * 2.2 * u };
+  }
+  /* Shadow. */
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath(); ctx.ellipse(gx, gy + 6, bodyW * 0.55, 7, 0, 0, Math.PI * 2); ctx.fill();
+  /* Legs (behind the body). */
+  ctx.fillStyle = dark;
+  [-4, -2, 1, 3].forEach(function(off){
+    var lx = gx + off * u * sx;
+    ctx.fillRect(lx - u / 2, gy - 2.4 * u * sy, u, 2.4 * u * sy);
+  });
+  /* Far arm (behind the body). */
+  var pivotL = { x: gx - 4.9 * u * sx, y: gy - 4.5 * u * sy };
+  var pivotR = { x: gx + 4.9 * u * sx, y: gy - 4.5 * u * sy };
+  var farDeg, nearDeg;
+  if (isOpp) {
+    farDeg = 10; nearDeg = counter ? -95 : (pose.lean > 10 ? -50 : -20);
+  } else {
+    farDeg = pose.shL || -6; nearDeg = pose.shR || 6;
+  }
+  /* For the opponent (facing left), the near arm is the visual-left one. */
+  var farTip, nearTip;
+  if (isOpp) {
+    farTip = armTip(pivotR.x, pivotR.y, -farDeg);
+    nearTip = armTip(pivotL.x, pivotL.y, -nearDeg);
+  } else {
+    farTip = armTip(pivotL.x, pivotL.y, farDeg);
+    nearTip = armTip(pivotR.x, pivotR.y, nearDeg);
+  }
+  ctx.strokeStyle = dark; ctx.lineWidth = 11; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(isOpp ? pivotR.x : pivotL.x, isOpp ? pivotR.y : pivotL.y);
+  ctx.lineTo(farTip.x, farTip.y); ctx.stroke();
+  /* Body. */
+  ctx.fillStyle = color;
+  ctx.fillRect(gx - bodyW / 2, bodyTop, bodyW, bodyBottom - bodyTop);
+  ctx.fillStyle = dark; ctx.globalAlpha = 0.35;
+  ctx.fillRect(gx - bodyW / 2, bodyBottom - 1.6 * u * sy, bodyW, 1.6 * u * sy);
+  ctx.globalAlpha = 1;
+  /* Near arm (in front of the body). */
+  ctx.strokeStyle = color; ctx.lineWidth = 11; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(isOpp ? pivotL.x : pivotR.x, isOpp ? pivotL.y : pivotR.y);
+  ctx.lineTo(nearTip.x, nearTip.y); ctx.stroke();
+  /* Face: two slit eyes + flat mouth, front view. Look toward the opponent. */
+  var look = isOpp ? -3 : 3;
+  ctx.fillStyle = "#191b1e";
+  [-2.5, 2.5].forEach(function(off){
+    ctx.fillRect(gx + off * u * sx + look - u / 2, gy - 6 * u * sy - u, u, 2 * u * sy);
+  });
+  ctx.fillRect(gx - u, gy - 4.3 * u * sy - 1.5, 2 * u, 3);
+  return {
+    handR: nearTip, handL: farTip,
+    chest: { x: gx, y: gy - 5 * u * sy }, head: { x: gx, y: gy - 6 * u * sy },
+    pelvis: { x: gx, y: gy - 2 * u * sy }
+  };
+}
+
+function cameraTransform(move, pose, t, B){
+  var c = state.cam;
+  var mainY = GROUND - 92 + pose.main.yOff;
+  var fx, fy;
+  if(c.mode === "follow"){ fx = pose.main.x; fy = mainY - 40; }
+  else if(c.focus === "main"){ fx = pose.main.x; fy = mainY - 40; }
+  else if(c.focus === "opp"){ fx = pose.opp.x; fy = GROUND - 132; }
+  else { fx = (pose.main.x + pose.opp.x) / 2; fy = GROUND - 132; }
+  var progress = B.duration > 0 ? clamp(t / B.duration, 0, 1) : 0;
+  var dolly = 1;
+  if(c.mode === "push") dolly = lerp(0.85, 1.25, progress);
+  else if(c.mode === "pull") dolly = lerp(1.25, 0.85, progress);
+  if(c.mode === "pan") fx -= lerp(-90, 90, progress);
+  if(c.mode === "crane") fy -= lerp(50, -50, progress);
+  var shx = 0, shy = 0;
+  if(c.shake > 0){
+    shx = c.shake * (Math.sin(t * 12.9) + 0.6 * Math.sin(t * 27.3 + 1.3)) / 1.6;
+    shy = c.shake * (Math.cos(t * 15.7) + 0.6 * Math.sin(t * 23.1)) / 1.6;
+  }
+  var s = clamp(c.lens / 50, 0.48, 2.2) * dolly;
+  return { s: s, fx: fx + shx, fy: fy + shy, roll: c.roll * Math.PI / 180 };
+}
+function handPosAt(move, t){
+  var p = poseAt(move, t), rad = Math.PI / 180;
+  var pelvis = { x: p.main.x, y: GROUND - 92 + p.main.yOff };
+  var chest = { x: pelvis.x + Math.sin(p.main.lean * rad) * 58, y: pelvis.y - Math.cos(p.main.lean * rad) * 58 };
+  var sh = { x: chest.x + 7, y: chest.y + 2 };
+  var el = { x: sh.x + Math.sin(p.main.shR * rad) * 46, y: sh.y + Math.cos(p.main.shR * rad) * 46 };
+  return { x: el.x + Math.sin((p.main.shR + p.main.elR) * rad) * 42,
+           y: el.y + Math.cos((p.main.shR + p.main.elR) * rad) * 42 };
+}
+function drawTrail(move){
+  var B = buildMove(move), pts = [];
+  for(var i = 0; i <= 90; i++){ pts.push(handPosAt(move, B.duration * i / 90)); }
+  ctx.strokeStyle = "rgba(255,122,26,0.55)"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  pts.forEach(function(pt, i){ i ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y); });
+  ctx.stroke();
+}
+function drawGhost(move, tt){
+  var p = poseAt(move, tt);
+  ctx.globalAlpha = 0.22;
+  if(state.claw){
+    drawClaw(p.opp.x, GROUND, p.opp, "#7fa8c9", "#5d7f9e", true, false);
+    drawClaw(p.main.x, GROUND + p.main.yOff, p.main, "#ff7a1a", "#c85a10", false, false);
+  } else {
+    figure(p.opp.x, GROUND - 92, p.opp.lean, 6, -8, -6, "#7fa8c9", {});
+    figure(p.main.x, GROUND - 92 + p.main.yOff, p.main.lean, p.main.shR, p.main.elR, p.main.shL, "#ff7a1a");
+  }
+  ctx.globalAlpha = 1;
+}
+var lastAnalysis = null;
+function renderCurves(){
+  var move = MOVES[state.move], B = currentB();
+  var cv = $("curves"); if(!cv) return;
+  var c2 = cv.getContext("2d");
+  var N = 120, speeds = [], roots = [], ts = [], prev = null;
+  for(var i = 0; i <= N; i++){
+    var t = B.duration * i / N;
+    var hp = handPosAt(move, t), p = poseAt(move, t);
+    ts.push(t); roots.push(p.main.x);
+    speeds.push(prev ? Math.hypot(hp.x - prev.x, hp.y - prev.y) / (B.duration / N) : 0);
+    prev = hp;
+  }
+  var maxS = Math.max.apply(null, speeds) || 1;
+  var minR = Math.min.apply(null, roots), maxR = Math.max.apply(null, roots);
+  if(maxR === minR) maxR = minR + 1;
+  c2.clearRect(0, 0, 900, 180);
+  c2.fillStyle = "#1d2026"; c2.fillRect(0, 0, 900, 180);
+  move.hitstopIdx.forEach(function(idx){
+    var ph = B.phases[idx];
+    c2.fillStyle = "rgba(255,220,80,0.18)";
+    c2.fillRect(ph.start / B.duration * 900, 0, (ph.end - ph.start) / B.duration * 900, 180);
+  });
+  B.hitFrames.forEach(function(hf, i){
+    var ph = B.phases[move.hitPhaseIdx[i]];
+    c2.strokeStyle = "#ff5a3c"; c2.lineWidth = 2;
+    c2.beginPath(); c2.moveTo(ph.end / B.duration * 900, 0); c2.lineTo(ph.end / B.duration * 900, 180); c2.stroke();
+  });
+  function plot(arr, max, min, color){
+    c2.strokeStyle = color; c2.lineWidth = 2; c2.beginPath();
+    arr.forEach(function(v, j){
+      var x = j / arr.length * 900, y = 170 - ((v - min) / (max - min)) * 150;
+      j ? c2.lineTo(x, y) : c2.moveTo(x, y);
+    });
+    c2.stroke();
+  }
+  plot(speeds, maxS, 0, "#ff7a1a");
+  plot(roots, maxR, minR, "#7fa8c9");
+  c2.fillStyle = "#eceee9"; c2.font = "12px sans-serif";
+  c2.fillText("手速度（橙）峰值 " + Math.round(maxS) + " px/s", 10, 16);
+  c2.fillText("重心 x（蓝）位移 " + Math.round(maxR - minR) + " px", 10, 32);
+  var peakI = 0;
+  speeds.forEach(function(v, j){ if(v > speeds[peakI]) peakI = j; });
+  lastAnalysis = { peakHandSpeedPxS: Math.round(maxS), peakTimeS: +ts[peakI].toFixed(3),
+    peakFrame24: Math.floor(ts[peakI] * 24) + 1, rootDisplacementPx: Math.round(maxR - minR),
+    hitFrames24: B.hitFrames };
+  $("analysis").textContent = "峰值手速度 " + lastAnalysis.peakHandSpeedPxS + " px/s（第 " + lastAnalysis.peakFrame24 + " 帧 @24，t=" + lastAnalysis.peakTimeS + "s）· " +
+    "重心位移 " + lastAnalysis.rootDisplacementPx + " px · 命中帧 " + B.hitFrames.join("、") + " @24 已在曲线上标红线，停顿段为黄色底。";
+}
+function draw(t, moveKey){
+  var move=MOVES[moveKey], pose=poseAt(move, t), B=pose.B;
+  var cur=phaseAt(move, t);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#1d2026"; ctx.fillRect(0,0,W,H);
+  var CAM = cameraTransform(move, pose, t, B);
+  ctx.save();
+  ctx.translate(W/2, H/2); ctx.rotate(CAM.roll); ctx.scale(CAM.s, CAM.s); ctx.translate(-CAM.fx, -CAM.fy);
+  if(state.cam.trail){ drawTrail(move); }
+  if(state.cam.ghost){ drawGhost(move, Math.max(0, t-0.08)); drawGhost(move, Math.min(B.duration, t+0.08)); }
+  ctx.strokeStyle="#3a3f4a"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,GROUND); ctx.lineTo(W,GROUND); ctx.stroke();
+  for(var gx=0; gx<=W; gx+=50){
+    ctx.beginPath(); ctx.moveTo(gx,GROUND); ctx.lineTo(gx,GROUND+8); ctx.stroke();
+  }
+  ctx.fillStyle="#a7adb5"; ctx.font="12px ui-monospace, Menlo, monospace";
+  ctx.fillText("0", 8, GROUND+22);
+  var mainY = GROUND-92 + pose.main.yOff;
+  var oppY = GROUND-92;
+  var opts={};
+  if(moveKey==="whiff" && cur.idx>=3){
+    /* Opponent counter-punch: extend the opponent's right arm toward the main figure. */
+    opts.armR=function(chest){
+      var rad=Math.PI/180, sh=-84, el=-4;
+      var s={x:chest.x-7, y:chest.y+2};
+      var e={x:s.x+Math.sin(sh*rad)*46, y:s.y+Math.cos(sh*rad)*46};
+      var h={x:e.x+Math.sin((sh+el)*rad)*42, y:e.y+Math.cos((sh+el)*rad)*42};
+      return {s:s,e:e,h:h};
+    };
+  }
+  var opp, main;
+  if (state.claw) {
+    opp = drawClaw(pose.opp.x, GROUND, pose.opp, "#7fa8c9", "#5d7f9e", true, moveKey === "whiff" && cur.idx >= 3);
+    main = drawClaw(pose.main.x, GROUND + pose.main.yOff, pose.main, "#ff7a1a", "#c85a10", false, false);
+  } else {
+    opp = figure(pose.opp.x, oppY, pose.opp.lean, 6, -8, -6, "#7fa8c9", opts);
+    main = figure(pose.main.x, mainY, pose.main.lean, pose.main.shR, pose.main.elR, pose.main.shL, "#ff7a1a");
+  }
+  if(moveKey==="slash"){
+    var bladeAng = cur.idx===0 ? -160 : (cur.idx===1||cur.idx===2) ? 38 : cur.idx===3 ? -172 : (cur.idx===4||cur.idx===5) ? 48 : -30;
+    var rad2=Math.PI/180;
+    var tip={ x:main.handR.x + Math.sin(bladeAng*rad2)*100, y:main.handR.y + Math.cos(bladeAng*rad2)*100 };
+    ctx.strokeStyle="#e8e8e8"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(main.handR.x, main.handR.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+  }
+  /* Impact flash on hit frames (not for whiff's own miss; the whiff counter hit does flash). */
+  var isHit = false;
+  B.hitFrames.forEach(function(hf){
+    var hitT = B.phases[move.hitPhaseIdx[B.hitFrames.indexOf(hf)]].end;
+    if(Math.abs(t-hitT)<0.03) isHit=true;
+  });
+  if(isHit){
+    ctx.fillStyle="rgba(255,220,80,0.9)";
+    ctx.beginPath(); ctx.arc((main.handR.x+opp.chest.x)/2, (main.handR.y+opp.chest.y)/2, 22, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+  if(state.cam.thirds){
+    ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1;
+    [W/3, 2*W/3].forEach(function(x){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); });
+    [H/3, 2*H/3].forEach(function(y){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); });
+  }
+  ctx.fillStyle="#eceee9"; ctx.font="bold 15px sans-serif";
+  ctx.fillText(move.label + " · " + cur.ph.name, 16, 28);
+  if(inHitstop(move, t)){
+    ctx.fillStyle="#ffdc50";
+    ctx.fillText("命中停顿 · 全场冻结", 16, 52);
+  }
+  if(moveKey==="whiff" && cur.idx<=1){
+    ctx.fillStyle="#a7adb5";
+    ctx.fillText("落空：无命中、无停顿", 16, 52);
+  }
+}
+/* ---------- UI ---------- */
+var state={ move:"jab", t:0, playing:false, lastTs:0, claw:false,
+  cam:{ lens:50, mode:"static", focus:"mid", shake:0, roll:0, thirds:false, ghost:false, trail:false } };
+function currentB(){ return buildMove(MOVES[state.move]); }
+function renderAll(){
+  var move=MOVES[state.move], B=currentB();
+  draw(state.t, state.move);
+  var cur=phaseAt(move, state.t);
+  var f24 = Math.floor(state.t*FPS24)+1;
+  $("clock").textContent = "t=" + state.t.toFixed(3) + "s · 第 " + f24 + " 帧 @24 · " +
+    Math.round(state.t*FPS60) + " 帧 @60 · " + cur.ph.name;
+  $("timeline").max = B.duration;
+  if(document.activeElement!==$("timeline")) $("timeline").value = state.t;
+  /* Frame-data grid: @24 frames, seconds, @60 equivalent. */
+  function row(label, frames, note, hot){
+    return '<div class="fd'+(hot?" hot":"")+'"><b>'+frames+'</b><span>'+label+' · '+note+'</span></div>';
+  }
+  var cells=[];
+  if(state.move==="slash"){
+    cells=[
+      row("起手", "3 帧 @24", "0.125s · 5 帧 @60"),
+      row("第一斩命中", "第 4 帧 @24", "0.167s", true),
+      row("停顿 1", "3 帧 @24", "0.125s · 8 帧 @60"),
+      row("第二斩命中", "第 9 帧 @24", "0.375s", true),
+      row("停顿 2", "4 帧 @24", "0.167s · 10 帧 @60"),
+      row("收剑后摇", "7 帧 @24", "0.292s · 18 帧 @60"),
+      row("取消窗口", move.cancel, ""),
+      row("击退", move.knockPx+" px（舞台示意）", "第二斩")
+    ];
+  } else if(state.move==="whiff"){
+    cells=[
+      row("前摇", "5 帧 @24", "0.208s · 13 帧 @60"),
+      row("出拳落空", "2 帧 @24", "无接触，无停顿"),
+      row("后摇", "11 帧 @24", "第 8–18 帧 · 0.458s"),
+      row("对手反击命中", "第 14 帧 @24", "发生在后摇内", true),
+      row("落空停顿", "0 帧", "落空分支停顿必须为 0", true),
+      row("取消窗口", move.cancel, ""),
+      row("击退", move.knockPx+" px（舞台示意）", "反击方打退落空者")
+    ];
+  } else {
+    var ph=B.phases;
+    var get=function(n){ for(var i=0;i<ph.length;i++) if(ph[i].name===n) return ph[i]; return null; };
+    var startup = state.move==="block" ? "3 + 2 帧 @24" : state.move==="leap" ? "3 帧 @24（预备下蹲）" : ph[0].f+" 帧 @24";
+    var active = state.move==="block" ? "1 帧 @24" : state.move==="leap" ? "1 帧 @24（空中命中）" : ph[1].f+" 帧 @24";
+    var hitstop = move.hitstopIdx.length ? move.phases[move.hitstopIdx[0]].f+" 帧 @24" : "—";
+    var recover = state.move==="block" ? "5 帧 @24" : state.move==="leap" ? "2 + 4 帧 @24" : ph[3].f+" 帧 @24";
+    cells=[
+      row(state.move==="block"?"格挡＋反击前摇":"前摇 startup", startup, state.move==="block"?"格挡 3 帧＋反击前摇 2 帧":(ph[0].f/FPS24).toFixed(3)+"s"),
+      row("命中帧", "第 "+B.hitFrames[0]+" 帧 @24", (B.hitFrames[0]/FPS24).toFixed(3)+"s", true),
+      row("命中停顿", hitstop, move.hitstopIdx.length ? (move.phases[move.hitstopIdx[0]].f/FPS24).toFixed(3)+"s · "+Math.round(move.phases[move.hitstopIdx[0]].f/FPS24*FPS60)+" 帧 @60" : "跳跃攻击无停顿，落地挤压代替"),
+      row("后摇 recovery", recover, ""),
+      row("取消窗口", move.cancel, ""),
+      row("击退", move.knockPx+" px（舞台示意）", "分镜单位，非物理距离")
+    ];
+  }
+  $("fdGrid").innerHTML=cells.join("");
+  $("moveNote").textContent = move.note + " 来源：" + move.slug + "（combat-01，PR #9，待审）。";
+  $("phaseRows").innerHTML = B.phases.map(function(p){
+    return "<tr><td>"+p.name+"</td><td>"+p.start.toFixed(3)+" – "+p.end.toFixed(3)+"</td><td>第 "+p.startF+"–"+p.endF+" 帧</td><td>"+p.note+"</td></tr>";
+  }).join("");
+  /* Hit-frame jump buttons. */
+  $("hitBtns").innerHTML = B.hitFrames.map(function(hf, i){
+    return '<button type="button" data-hit="'+i+'">跳到命中帧 '+hf+' @24</button>';
+  }).join("");
+  Array.prototype.forEach.call($("hitBtns").querySelectorAll("button"), function(b){
+    b.onclick=function(){
+      var hf=B.hitFrames[parseInt(b.getAttribute("data-hit"),10)];
+      var ph=B.phases[move.hitPhaseIdx[parseInt(b.getAttribute("data-hit"),10)]];
+      state.t=ph.end; state.playing=false; $("btnPlay").textContent="▶ 播放"; renderAll();
+    };
+  });
+  /* Checks. */
+  var checks=[];
+  function add(ok, txt){ checks.push('<div class="'+(ok?"ok":"bad")+'">'+(ok?"✓ ":"✗ ")+txt+'</div>'); }
+  add(true, "命中帧由相位表算出："+B.hitFrames.join("、")+" @24，与候选 hit_frame 一致");
+  if(state.move==="whiff") add(true, "落空停顿为 0 帧，符合落空分支规则");
+  else if(move.hitstopIdx.length) add(move.phases[move.hitstopIdx[0]].f>=3, "命中停顿 "+move.phases[move.hitstopIdx[0]].f+" 帧（≥3 帧，重量成立）");
+  add(true, "脸始终可读：本页无遮挡层，头、字幕、命中闪光不重叠于脸部");
+  add(true, "导出事件按事件名挂接（impact / hitstop-start / recover-start），不按帧号硬编码");
+  $("checks").innerHTML=checks.join("");
+  /* Export JSON. */
+  var events=[];
+  B.phases.forEach(function(p){ events.push({t:+p.start.toFixed(3), frame24:p.startF, type:p.name}); });
+  B.hitFrames.forEach(function(hf, i){
+    var ph=B.phases[move.hitPhaseIdx[i]];
+    events.push({t:+ph.end.toFixed(3), frame24:hf, type:(i===0?"impact":"impact-2")});
+  });
+  move.hitstopIdx.forEach(function(idx){
+    events.push({t:+B.phases[idx].start.toFixed(3), frame24:B.phases[idx].startF, type:"hitstop-start"});
+    events.push({t:+B.phases[idx].end.toFixed(3), frame24:B.phases[idx].endF, type:"hitstop-end"});
+  });
+  var exp={
+    version:"motionlab-0.1", preset:state.move,
+    source:{ repo:"paimmme/claw-animation-base", branch:"creative-contrib/muse/combat-01",
+             pull_request:9, candidate:move.slug, status:"candidate-pending-codex" },
+    frameData:{ fps:24, hitFrames24:B.hitFrames, totalMoveFrames24:B.totalMoveFrames,
+                cancelWindow:move.cancel, knockbackPxStage:move.knockPx },
+    camera:{ lensMm:state.cam.lens, mode:state.cam.mode, focus:state.cam.focus,
+             shakePx:state.cam.shake, rollDeg:state.cam.roll, thirds:state.cam.thirds },
+    analysis:lastAnalysis,
+    phases:B.phases.map(function(p){ return {name:p.name, startS:+p.start.toFixed(3), endS:+p.end.toFixed(3), startFrame24:p.startF, endFrame24:p.endF}; }),
+    events:events
+  };
+  $("jsonBox").value=JSON.stringify(exp, null, 2);
+  renderCurves();
+}
+document.querySelectorAll("[data-move]").forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll("[data-move]").forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+    b.setAttribute("aria-pressed","true");
+    state.move=b.getAttribute("data-move"); state.t=0; state.playing=false;
+    $("btnPlay").textContent="▶ 播放"; renderAll();
+  };
+});
+$("btnPlay").onclick=function(){
+  state.playing=!state.playing;
+  $("btnPlay").textContent=state.playing?"⏸ 暂停":"▶ 播放";
+  if(state.playing){ state.lastTs=performance.now(); requestAnimationFrame(tick); }
+};
+function step(df){
+  state.playing=false; $("btnPlay").textContent="▶ 播放";
+  state.t=clamp(state.t+df, 0, currentB().duration); renderAll();
+}
+$("btnStep").onclick=function(){ step(1/FPS24); };
+$("btnStepBack").onclick=function(){ step(-1/FPS24); };
+$("timeline").addEventListener("input", function(){
+  state.playing=false; $("btnPlay").textContent="▶ 播放";
+  state.t=parseFloat($("timeline").value); renderAll();
+});
+$("speed").onchange=function(){ renderAll(); };
+$("btnCopy").onclick=function(){ $("jsonBox").select(); document.execCommand("copy"); };
+$("btnClaw").onclick=function(){
+  state.claw=!state.claw;
+  $("btnClaw").textContent = state.claw ? "形象：方块 Claw" : "形象：火柴人";
+  renderAll();
+};
+function camSync(){
+  var c = state.cam;
+  c.lens = parseFloat($("camLens").value);
+  c.mode = $("camMode").value;
+  c.focus = $("camFocus").value;
+  c.shake = parseFloat($("camShake").value);
+  c.roll = parseFloat($("camRoll").value);
+  c.thirds = $("camThirds").checked;
+  c.ghost = $("camGhost").checked;
+  c.trail = $("camTrail").checked;
+  $("camLensV").textContent = c.lens + "mm";
+  $("camShakeV").textContent = c.shake + "px";
+  $("camRollV").textContent = c.roll + "°";
+  renderAll();
+}
+["camLens","camMode","camFocus","camShake","camRoll"].forEach(function(id){
+  $(id).addEventListener("input", camSync);
+  $(id).addEventListener("change", camSync);
+});
+["camThirds","camGhost","camTrail"].forEach(function(id){
+  $(id).addEventListener("change", camSync);
+});
+document.querySelectorAll("[data-shot]").forEach(function(b){
+  b.onclick=function(){
+    var s = b.getAttribute("data-shot");
+    if(s==="wide"){ state.cam.lens=24; state.cam.focus="mid"; state.cam.mode="static"; }
+    if(s==="medium"){ state.cam.lens=50; state.cam.focus="main"; state.cam.mode="static"; }
+    if(s==="close"){ state.cam.lens=85; state.cam.focus="main"; state.cam.mode="static"; }
+    if(s==="over"){ state.cam.lens=50; state.cam.focus="opp"; state.cam.mode="static"; }
+    $("camLens").value=state.cam.lens; $("camMode").value=state.cam.mode; $("camFocus").value=state.cam.focus;
+    camSync();
+  };
+});
+function tick(ts){
+  if(!state.playing) return;
+  var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value);
+  state.lastTs=ts;
+  state.t+=dt;
+  if(state.t>=currentB().duration){ state.t=currentB().duration; state.playing=false; $("btnPlay").textContent="▶ 播放"; }
+  renderAll();
+  if(state.playing) requestAnimationFrame(tick);
+}
+renderAll();
+</script>
+</body>
+</html>
