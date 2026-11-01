@@ -65,6 +65,7 @@
       <button id="btnStepBack" type="button">◀ 退 1 帧 @24</button>
       <button id="btnStep" type="button">进 1 帧 @24 ▶</button>
       <select id="speed" aria-label="播放速度"><option value="1" selected>1×</option><option value="0.5">0.5×</option><option value="0.25">0.25× 慢放</option></select>
+      <button id="btnClaw" type="button">形象：火柴人</button>
       <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="时间线" />
       <span class="meta" id="clock"></span>
     </div>
@@ -91,7 +92,8 @@
     <p style="margin-top:0"><b>换算：</b>候选帧数 @24fps → 秒 = 帧 ÷ 24；舞台 @60fps 等效帧 = 秒 × 60（四舍五入）。例如重拳停顿 6 帧 @24 = 0.250s，在舞台上相当于 15 帧 @60——不是把 6 直接当成舞台帧数。</p>
     <p><b>范围取値：</b>候选里写范围的，本页取一个定值并注明：轻拳后摇取 4 帧（范围 4–5）、重拳前摇取 5 帧（4–5）、停顿取 6 帧（5–6）、后摇取 8 帧（7–8）、双斩后摇取 7 帧（6–7）。Codex 定稿后按定稿改。</p>
     <p><b>落空惩罚的特殊处：</b>对手反击命中（第 14 帧）发生在落空者后摇内（第 8–18 帧），这正是“落空惩罚”的含义，不是时间线排错。</p>
-    <p style="margin-bottom:0"><b>近似声明：</b>本页火柴人是预演示意：腿用简化的两段骨骼＋固定落点，格挡、跳跃、落空的对手反应按相位表画，不承诺与 Claw 正式配方逐关节一致。正式配方仍以 Claw 仓库为准。</p>
+    <p><b>Claw 形象：</b>点“形象”按钮可在火柴人与方块 Claw 之间切换，姿态数据同一份，只换渲染器。方块 Claw 按 clawd.js 正视图简化：身体 10u × 6u、腿到地面、4 条短腿、手臂 pivot 在 (±4.9u, −4.5u)、两道眼缝＋一字嘴，脸固定为中性（表情仍由 Claw 侧接管）。u 取 11.5px，全高 92px，与火柴人等高。</p>
+    <p style="margin-bottom:0"><b>近似声明：</b>本页火柴人是预演示意：腿用简化的两段骨骼＋固定落点，格挡、跳跃、落空的对手反应按相位表画，不承诺与 Claw 正式配方逐关节一致。正式配方仍以 Claw 仓库为准。完整映射表见仓库里的 <a href="migration.md">migration.md</a>。</p>
   </div>
   <p class="sub"><a href="motionlab.html">← 回 MotionLab 主页（起跳 / 重拳 / 二连斩）</a></p>
 </div>
@@ -311,6 +313,78 @@ function figure(x, pelvisY, lean, shR, elR, shL, color, opts){
   });
   return {chest:chest, head:head, handR:aR.h, handL:aL.h, pelvis:pelvis};
 }
+/* ---------- Claw block figure (same joints, different renderer) ----------
+   Geometry from claw-animation-base src/clawd.js, front view, simplified to flat
+   fills (no watercolour/ink): body 10u wide x 6u tall (y -8u..-2u), legs to y 0,
+   4 stubby legs at x -4/-2/1/3u, arm pivots at (+-4.9u, -4.5u), arm length 2.2u,
+   eyes at (+-2.5u, -6u) 1u wide x 2u tall, mouth at (0, -4.3u).
+   u = 11.5px, so the full figure is 92px tall, matching the stick figure's
+   pelvis height. sq is derived from the crouch/squash offset (approximation,
+   documented in migration.md); the face stays neutral: expression is Claw-side. */
+function drawClaw(gx, gy, pose, color, dark, isOpp, counter){
+  var u = 11.5;
+  var yOff = pose.yOff || 0;
+  var sq = yOff > 0 ? Math.min(yOff / 90, 0.4) : 0;
+  var sx = 1 + sq * 0.6, sy = 1 - sq;
+  var bodyW = 10 * u * sx;
+  var bodyTop = gy - 8 * u * sy, bodyBottom = gy - 2 * u * sy;
+  var rad = Math.PI / 180;
+  function armTip(pivotX, pivotY, deg){
+    return { x: pivotX + Math.sin(deg * rad) * 2.2 * u, y: pivotY + Math.cos(deg * rad) * 2.2 * u };
+  }
+  /* Shadow. */
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath(); ctx.ellipse(gx, gy + 6, bodyW * 0.55, 7, 0, 0, Math.PI * 2); ctx.fill();
+  /* Legs (behind the body). */
+  ctx.fillStyle = dark;
+  [-4, -2, 1, 3].forEach(function(off){
+    var lx = gx + off * u * sx;
+    ctx.fillRect(lx - u / 2, gy - 2.4 * u * sy, u, 2.4 * u * sy);
+  });
+  /* Far arm (behind the body). */
+  var pivotL = { x: gx - 4.9 * u * sx, y: gy - 4.5 * u * sy };
+  var pivotR = { x: gx + 4.9 * u * sx, y: gy - 4.5 * u * sy };
+  var farDeg, nearDeg;
+  if (isOpp) {
+    farDeg = 10; nearDeg = counter ? -95 : (pose.lean > 10 ? -50 : -20);
+  } else {
+    farDeg = pose.shL || -6; nearDeg = pose.shR || 6;
+  }
+  /* For the opponent (facing left), the near arm is the visual-left one. */
+  var farTip, nearTip;
+  if (isOpp) {
+    farTip = armTip(pivotR.x, pivotR.y, -farDeg);
+    nearTip = armTip(pivotL.x, pivotL.y, -nearDeg);
+  } else {
+    farTip = armTip(pivotL.x, pivotL.y, farDeg);
+    nearTip = armTip(pivotR.x, pivotR.y, nearDeg);
+  }
+  ctx.strokeStyle = dark; ctx.lineWidth = 11; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(isOpp ? pivotR.x : pivotL.x, isOpp ? pivotR.y : pivotL.y);
+  ctx.lineTo(farTip.x, farTip.y); ctx.stroke();
+  /* Body. */
+  ctx.fillStyle = color;
+  ctx.fillRect(gx - bodyW / 2, bodyTop, bodyW, bodyBottom - bodyTop);
+  ctx.fillStyle = dark; ctx.globalAlpha = 0.35;
+  ctx.fillRect(gx - bodyW / 2, bodyBottom - 1.6 * u * sy, bodyW, 1.6 * u * sy);
+  ctx.globalAlpha = 1;
+  /* Near arm (in front of the body). */
+  ctx.strokeStyle = color; ctx.lineWidth = 11; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(isOpp ? pivotL.x : pivotR.x, isOpp ? pivotL.y : pivotR.y);
+  ctx.lineTo(nearTip.x, nearTip.y); ctx.stroke();
+  /* Face: two slit eyes + flat mouth, front view. Look toward the opponent. */
+  var look = isOpp ? -3 : 3;
+  ctx.fillStyle = "#191b1e";
+  [-2.5, 2.5].forEach(function(off){
+    ctx.fillRect(gx + off * u * sx + look - u / 2, gy - 6 * u * sy - u, u, 2 * u * sy);
+  });
+  ctx.fillRect(gx - u, gy - 4.3 * u * sy - 1.5, 2 * u, 3);
+  return {
+    handR: nearTip, handL: farTip,
+    chest: { x: gx, y: gy - 5 * u * sy }, head: { x: gx, y: gy - 6 * u * sy },
+    pelvis: { x: gx, y: gy - 2 * u * sy }
+  };
+}
 function draw(t, moveKey){
   var move=MOVES[moveKey], pose=poseAt(move, t), B=pose.B;
   var cur=phaseAt(move, t);
@@ -336,8 +410,14 @@ function draw(t, moveKey){
       return {s:s,e:e,h:h};
     };
   }
-  var opp = figure(pose.opp.x, oppY, pose.opp.lean, 6, -8, -6, "#7fa8c9", opts);
-  var main = figure(pose.main.x, mainY, pose.main.lean, pose.main.shR, pose.main.elR, pose.main.shL, "#ff7a1a");
+  var opp, main;
+  if (state.claw) {
+    opp = drawClaw(pose.opp.x, GROUND, pose.opp, "#7fa8c9", "#5d7f9e", true, moveKey === "whiff" && cur.idx >= 3);
+    main = drawClaw(pose.main.x, GROUND + pose.main.yOff, pose.main, "#ff7a1a", "#c85a10", false, false);
+  } else {
+    opp = figure(pose.opp.x, oppY, pose.opp.lean, 6, -8, -6, "#7fa8c9", opts);
+    main = figure(pose.main.x, mainY, pose.main.lean, pose.main.shR, pose.main.elR, pose.main.shL, "#ff7a1a");
+  }
   if(moveKey==="slash"){
     var bladeAng = cur.idx===0 ? -160 : (cur.idx===1||cur.idx===2) ? 38 : cur.idx===3 ? -172 : (cur.idx===4||cur.idx===5) ? 48 : -30;
     var rad2=Math.PI/180;
@@ -367,7 +447,7 @@ function draw(t, moveKey){
   }
 }
 /* ---------- UI ---------- */
-var state={ move:"jab", t:0, playing:false, lastTs:0 };
+var state={ move:"jab", t:0, playing:false, lastTs:0, claw:false };
 function currentB(){ return buildMove(MOVES[state.move]); }
 function renderAll(){
   var move=MOVES[state.move], B=currentB();
@@ -492,6 +572,11 @@ $("timeline").addEventListener("input", function(){
 });
 $("speed").onchange=function(){ renderAll(); };
 $("btnCopy").onclick=function(){ $("jsonBox").select(); document.execCommand("copy"); };
+$("btnClaw").onclick=function(){
+  state.claw=!state.claw;
+  $("btnClaw").textContent = state.claw ? "形象：方块 Claw" : "形象：火柴人";
+  renderAll();
+};
 function tick(ts){
   if(!state.playing) return;
   var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value);
