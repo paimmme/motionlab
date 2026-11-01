@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MotionLab v2.1 · 专业动作实验室</title>
+<title>MotionLab v2.2 · 专业动作实验室</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;background:#f2f2ef;color:#191b1e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.65}
@@ -45,7 +45,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>MotionLab v2.1 <span>·</span> 专业动作实验室</h1>
+  <h1>MotionLab v2.2 <span>·</span> 专业动作实验室</h1>
   <p class="sub">在战斗帧对接页之上加了专业实验室的三件套：虚拟运镜（焦距 / 推拉 / 跟随 / 摇移 / 升降 / 手持 / 荷兰角）、曲线（手速度与重心轨迹）与动作分析（峰值手速度、重心位移）。姿态数据与 combat.html 同源，运镜只改取景，不改帧数据——命中帧在哪一帧，运镜前后不变。</p>
   <div class="note"><b>来源与状态：</b>帧数据来自 claw-animation-base 候选批 combat-01（草稿 PR #9），<b>待 Codex 审，未入库</b>。本页只是预演对接，不等于正式词典条目；Codex 改了帧数，这里跟着改。击退距离是舞台示意像素，不是物理距离；真实手部接触证据仍按分镜另给。</div>
 
@@ -121,6 +121,46 @@
   <div style="margin-top:8px"><button class="btn" id="btnMarkRef" type="button">标记参考命中时刻</button></div>
   <div id="refCompare" style="margin-top:8px"></div>
 
+  <h2>特效（打击感）</h2>
+  <p class="sub">注意两个同名词：<b>卡肉</b>是命中瞬间的停顿（游戏顿帧）；<b>顿帧</b>在这里指动画拍法——一张画保持 2 帧或 3 帧（拍 2 / 拍 3）。两者不要混：一个是命中反馈，一个是播放步进。所有特效只改本页预演，不改 combat-01 候选帧数据。</p>
+  <p>
+    <label><input type="checkbox" id="fxKaro"> 卡肉加强（命中停顿内再慢 4 倍）</label>
+    <label>顿帧
+      <select id="fxDun"><option value="0">关（每帧都动）</option><option value="2">拍 2（每 2 帧换一格）</option><option value="3">拍 3（每 3 帧换一格）</option></select>
+    </label>
+    <label><input type="checkbox" id="fxFlash"> 黑白闪（命中瞬间全屏黑白交替约 2 帧）</label>
+    <label><input type="checkbox" id="fxWhite"> 受击闪白（命中停顿内对手变白）</label>
+  </p>
+  <p>
+    <label><input type="checkbox" id="fxRing"> 冲击波（命中后扩散的圆环）</label>
+    <label><input type="checkbox" id="fxSparks"> 火花（命中点放射的短线）</label>
+    <label><input type="checkbox" id="fxShake"> 震屏（命中后 0.4s 内镜头抖动）</label>
+    <label><input type="checkbox" id="fxSlowmo"> 慢动作（命中停顿结束后 0.35s 内 0.3 倍速）</label>
+  </p>
+  <h2>多机位（A / B / C）</h2>
+  <p class="sub">三个机位槽，各存一套运镜（焦距、模式、焦点、抖动、倾斜、三分线）。先调好运镜，再点“保存到当前机位”；点 A / B / C 切换。机位只改取景，不改帧数据。</p>
+  <p>
+    <button id="btnCamA" type="button" data-camslot="A">机位 A</button>
+    <button id="btnCamB" type="button" data-camslot="B">机位 B</button>
+    <button id="btnCamC" type="button" data-camslot="C">机位 C</button>
+    <button id="btnSaveCam" type="button">保存当前运镜到选中机位</button>
+    <span id="camSlotLabel">当前机位：A（未存，用当前运镜）</span>
+  </p>
+  <h2>场景串联（一场戏）</h2>
+  <p class="sub">把招式按顺序排成一场戏：先选招式（可配不同机位），点“加入当前招式”；点“连续播放整场”会按顺序播完，播完一招自动切下一招。衔接时长只是两招之间的间隔，不是混合过渡——真要混合，请用过渡查找算出的 via 姿态方案。</p>
+  <p>
+    <button id="btnSceneAdd" type="button">加入当前招式</button>
+    <button id="btnScenePlay" type="button">连续播放整场</button>
+    <button id="btnSceneClear" type="button">清空场景</button>
+    <label>每段衔接 <input id="sceneTrans" type="number" value="0.3" min="0" max="1" step="0.05" style="width:60px"> 秒</label>
+  </p>
+  <p id="sceneList">场景为空：先点“加入当前招式”。</p>
+  <p id="sceneTotal"></p>
+  <h2>Claw 配方回写（草稿）</h2>
+  <p class="sub">把当前招式的相位边界转成 acting.js 风格的关键帧草稿：dx / dy 按本页坐标换算（u=11.5px，dy 符号翻转），sq 由下蹲量近似，rot 由 lean 换算，手臂角度为方向换算。<b>这只是草稿，必须在 Claw 侧用 clawdAnchor 实测、经 Codex 审后才能入库，绝不直接写正式目录。</b></p>
+  <p><button id="btnClawDraft" type="button">生成当前招式的 Claw 配方草稿</button>
+  <button id="btnCopyDraft" type="button">复制草稿</button></p>
+  <textarea id="clawDraftBox" rows="12" cols="110" placeholder="点“生成当前招式的 Claw 配方草稿”后出现在这里。"></textarea>
   <h2>相位表（秒与帧都列出，命中帧由相位算出，不手写）</h2>
   <table><thead><tr><th>相位</th><th>起止（秒）</th><th>帧 @24</th><th>说明</th></tr></thead><tbody id="phaseRows"></tbody></table>
 
@@ -591,6 +631,82 @@ function renderCurves(){
   $("analysis").textContent = "峰值手速度 " + lastAnalysis.peakHandSpeedPxS + " px/s（第 " + lastAnalysis.peakFrame24 + " 帧 @24，t=" + lastAnalysis.peakTimeS + "s）· " +
     "重心位移 " + lastAnalysis.rootDisplacementPx + " px · 命中帧 " + B.hitFrames.join("、") + " @24 已在曲线上标红线，停顿段为黄色底。";
 }
+function lastHitInfo(move, B, t){
+  var last=null;
+  move.hitPhaseIdx.forEach(function(i){
+    var h=B.phases[i].end;
+    if(h<=t+1e-9) last=h;
+  });
+  var hsEnd=null;
+  if(move.hitstopIdx.length) hsEnd=B.phases[move.hitstopIdx[0]].end;
+  return { lastHit:last, since:(last===null?null:t-last), hitstopEnd:hsEnd };
+}
+function snapT(t){
+  var step=state.fx.dun;
+  if(!step) return t;
+  return Math.round(t*24/step)*step/24;
+}
+function camSnapshot(){
+  var c=state.cam;
+  return { lens:c.lens, mode:c.mode, focus:c.focus, shake:c.shake, roll:c.roll, thirds:c.thirds };
+}
+function applyCamConfig(cfg){
+  state.cam.lens=cfg.lens; state.cam.mode=cfg.mode; state.cam.focus=cfg.focus;
+  state.cam.shake=cfg.shake; state.cam.roll=cfg.roll; state.cam.thirds=cfg.thirds;
+  $("camLens").value=cfg.lens; $("camMode").value=cfg.mode; $("camFocus").value=cfg.focus;
+  $("camShake").value=cfg.shake; $("camRoll").value=cfg.roll; $("camThirds").checked=cfg.thirds;
+  camSync();
+}
+function refreshCamSlotLabel(){
+  $("camSlotLabel").textContent="当前机位："+state.camSlot+(state.cams[state.camSlot]?"（已存方案）":"（未存，用当前运镜）");
+}
+function syncPresetButtons(){
+  document.querySelectorAll("[data-move]").forEach(function(b){
+    b.setAttribute("aria-pressed", b.getAttribute("data-move")===state.move ? "true" : "false");
+  });
+}
+function sceneTotalDuration(){
+  var total=0;
+  state.scene.forEach(function(s, i){
+    total+=buildMove(MOVES[s.move]).duration;
+    if(i<state.scene.length-1) total+=(parseFloat($("sceneTrans").value)||0);
+  });
+  return total;
+}
+function renderSceneList(){
+  if(!state.scene.length){
+    $("sceneList").textContent="场景为空：先点“加入当前招式”。";
+  } else {
+    $("sceneList").innerHTML=state.scene.map(function(s, i){
+      return (i+1)+". "+MOVES[s.move].label+"（机位 "+s.cam+"）";
+    }).join("<br>");
+  }
+  $("sceneTotal").textContent="共 "+state.scene.length+" 招，总时长约 "+sceneTotalDuration().toFixed(2)+"s（含每段衔接 "+($("sceneTrans").value||0)+"s，衔接时长为串联间隔，不是混合过渡——混合请用过渡查找的方案）。";
+}
+function clawDraft(){
+  var move=MOVES[state.move], B=buildMove(move);
+  var originX=move.keys[0].m[0];
+  var editedFlag=move.phases.some(function(ph, i){ return ph.f!==ORIG_PHASES[state.move][i].f; });
+  var times=[0].concat(B.phases.map(function(p){ return p.end; }));
+  var lines=[];
+  lines.push("// Claw 配方草稿（MotionLab v2.2 生成，需 Claw 侧实测与 Codex 审，不直接入库）");
+  lines.push("// 招式："+move.label+"（"+move.slug+"），来源 combat-01 候选 PR #9，当前相位"+(editedFlag?"已改动（非候选原值）":"与候选一致"));
+  lines.push("// 换算：dx=(x-起点)/11.5，dy=-yOff/11.5，sq 由下蹲量近似（上限 0.4），rot=lean 弧度；");
+  lines.push("// 手臂：右臂 aR=(shR-90)°，左臂 aL=(90-shL)°（镜像），方向换算，需用 clawdAnchor 实测手是否落点。");
+  lines.push("const DRAFT_"+state.move.toUpperCase()+" = [");
+  times.forEach(function(tb){
+    var pose=poseAt(move, tb).main;
+    var dx=((pose.x-originX)/11.5).toFixed(2);
+    var dy=(-pose.yOff/11.5).toFixed(2);
+    var sq=(pose.yOff>0?Math.min(pose.yOff/90,0.4):0).toFixed(2);
+    var rot=(pose.lean/57.3).toFixed(3);
+    var aR=((pose.shR-90)*Math.PI/180).toFixed(3);
+    var aL=((90-pose.shL)*Math.PI/180).toFixed(3);
+    lines.push("  ["+tb.toFixed(3)+", {dx:"+dx+", dy:"+dy+", sq:"+sq+", rot:"+rot+", aR:"+aR+", aL:"+aL+"}],");
+  });
+  lines.push("];");
+  return lines.join("\n");
+}
 function draw(t, moveKey){
   var move=MOVES[moveKey], pose=poseAt(move, t), B=pose.B;
   var cur=phaseAt(move, t);
@@ -598,7 +714,12 @@ function draw(t, moveKey){
   ctx.fillStyle="#1d2026"; ctx.fillRect(0,0,W,H);
   var CAM = cameraTransform(move, pose, t, B);
   ctx.save();
+  var HI=lastHitInfo(move, B, t);
   ctx.translate(W/2, H/2); ctx.rotate(CAM.roll); ctx.scale(CAM.s, CAM.s); ctx.translate(-CAM.fx, -CAM.fy);
+  if(state.fx.shake && HI.since!==null && HI.since<0.4){
+    var sAmp=6*(1-HI.since/0.4);
+    ctx.translate(sAmp*Math.sin(HI.since*55), sAmp*Math.cos(HI.since*47));
+  }
   if(state.cam.trail){ drawTrail(move); }
   if(state.cam.ghost){ drawGhost(move, Math.max(0, t-0.08)); drawGhost(move, Math.min(B.duration, t+0.08)); }
   ctx.strokeStyle="#3a3f4a"; ctx.lineWidth=1;
@@ -622,11 +743,12 @@ function draw(t, moveKey){
     };
   }
   var opp, main;
+  var oppCol=(state.fx.white && inHitstop(move, t)) ? "#ffffff" : "#7fa8c9";
   if (state.claw) {
-    opp = drawClaw(pose.opp.x, GROUND, pose.opp, "#7fa8c9", "#5d7f9e", true, moveKey === "whiff" && cur.idx >= 3);
+    opp = drawClaw(pose.opp.x, GROUND, pose.opp, oppCol, "#5d7f9e", true, moveKey === "whiff" && cur.idx >= 3);
     main = drawClaw(pose.main.x, GROUND + pose.main.yOff, pose.main, "#ff7a1a", "#c85a10", false, false);
   } else {
-    opp = figure(pose.opp.x, oppY, pose.opp.lean, 6, -8, -6, "#7fa8c9", opts);
+    opp = figure(pose.opp.x, oppY, pose.opp.lean, 6, -8, -6, oppCol, opts);
     main = figure(pose.main.x, mainY, pose.main.lean, pose.main.shR, pose.main.elR, pose.main.shL, "#ff7a1a");
   }
   if(moveKey==="slash"){
@@ -646,11 +768,31 @@ function draw(t, moveKey){
     ctx.fillStyle="rgba(255,220,80,0.9)";
     ctx.beginPath(); ctx.arc((main.handR.x+opp.chest.x)/2, (main.handR.y+opp.chest.y)/2, 22, 0, Math.PI*2); ctx.fill();
   }
+  /* Effects: expanding shockwave ring + impact sparks, both timed from the last hit. */
+  var hitPt={ x:(main.handR.x+opp.chest.x)/2, y:(main.handR.y+opp.chest.y)/2 };
+  if(state.fx.ring && HI.since!==null && HI.since<0.5){
+    ctx.strokeStyle="rgba(255,220,80,"+(1-HI.since/0.5).toFixed(2)+")"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(hitPt.x, hitPt.y, 20+HI.since*420, 0, Math.PI*2); ctx.stroke();
+  }
+  if(state.fx.sparks && HI.since!==null && HI.since<0.25){
+    var sparkLen=34*(1-HI.since/0.25);
+    for(var si=0; si<10; si++){
+      var ang=(si*36 + B.hitFrames[0]*7)*Math.PI/180;
+      ctx.strokeStyle=si%2 ? "#ffffff" : "#ffe08a"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(hitPt.x, hitPt.y);
+      ctx.lineTo(hitPt.x+Math.sin(ang)*sparkLen, hitPt.y+Math.cos(ang)*sparkLen); ctx.stroke();
+    }
+  }
   ctx.restore();
   if(state.cam.thirds){
     ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1;
     [W/3, 2*W/3].forEach(function(x){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); });
     [H/3, 2*H/3].forEach(function(y){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); });
+  }
+  /* Screen flash: whole-stage black/white alternation for ~2 frames around a hit. */
+  if(state.fx.flash && HI.lastHit!==null && Math.abs(t-HI.lastHit)<0.09){
+    ctx.fillStyle=(Math.floor(t*24)%2) ? "#ffffff" : "#000000";
+    ctx.globalAlpha=0.85; ctx.fillRect(0, 0, W, H); ctx.globalAlpha=1;
   }
   ctx.fillStyle="#eceee9"; ctx.font="bold 15px sans-serif";
   ctx.fillText(move.label + " · " + cur.ph.name, 16, 28);
@@ -665,7 +807,9 @@ function draw(t, moveKey){
 }
 /* ---------- UI ---------- */
 var state={ move:"jab", t:0, playing:false, lastTs:0, claw:false,
-  cam:{ lens:50, mode:"static", focus:"mid", shake:0, roll:0, thirds:false, ghost:false, trail:false } };
+  cam:{ lens:50, mode:"static", focus:"mid", shake:0, roll:0, thirds:false, ghost:false, trail:false },
+  fx:{ karo:false, dun:0, flash:false, white:false, ring:false, sparks:false, shake:false, slowmo:false },
+  cams:{ A:null, B:null, C:null }, camSlot:"A", scene:[], scenePlaying:false, sceneIndex:0 };
 function currentB(){ return buildMove(MOVES[state.move]); }
 function renderAll(){
   var move=MOVES[state.move], B=currentB();
@@ -774,6 +918,8 @@ function renderAll(){
     analysis:lastAnalysis,
     edited:editedFlag, originalCandidateHitFrames24:origHitFrames(state.move),
     rootMotion:{ frames:rootFrames, totalDisplacementPx: Math.round(maxRx - minRx) },
+    cameras:state.cams, camSlot:state.camSlot,
+    scene:{ moves:state.scene, joinS:(parseFloat($("sceneTrans").value)||0), totalS:+sceneTotalDuration().toFixed(3) },
     phases:B.phases.map(function(p){ return {name:p.name, startS:+p.start.toFixed(3), endS:+p.end.toFixed(3), startFrame24:p.startF, endFrame24:p.endF}; }),
     events:events
   };
@@ -785,6 +931,7 @@ document.querySelectorAll("[data-move]").forEach(function(b){
     document.querySelectorAll("[data-move]").forEach(function(x){ x.setAttribute("aria-pressed","false"); });
     b.setAttribute("aria-pressed","true");
     state.move=b.getAttribute("data-move"); state.t=0; state.playing=false;
+    state.scenePlaying=false; if($("btnScenePlay")) $("btnScenePlay").textContent="连续播放整场";
     $("btnPlay").textContent="▶ 播放"; renderAll();
   };
 });
@@ -795,13 +942,13 @@ $("btnPlay").onclick=function(){
 };
 function step(df){
   state.playing=false; $("btnPlay").textContent="▶ 播放";
-  state.t=clamp(state.t+df, 0, currentB().duration); renderAll();
+  state.t=snapT(clamp(state.t+df, 0, currentB().duration)); renderAll();
 }
-$("btnStep").onclick=function(){ step(1/FPS24); };
-$("btnStepBack").onclick=function(){ step(-1/FPS24); };
+$("btnStep").onclick=function(){ step((state.fx.dun||1)/FPS24); };
+$("btnStepBack").onclick=function(){ step(-(state.fx.dun||1)/FPS24); };
 $("timeline").addEventListener("input", function(){
   state.playing=false; $("btnPlay").textContent="▶ 播放";
-  state.t=parseFloat($("timeline").value); renderAll();
+  state.t=snapT(parseFloat($("timeline").value)); renderAll();
 });
 $("speed").onchange=function(){ renderAll(); };
 $("btnCopy").onclick=function(){ $("jsonBox").select(); document.execCommand("copy"); };
@@ -911,11 +1058,87 @@ function tick(ts){
   if(!state.playing) return;
   var dt=(ts-state.lastTs)/1000*parseFloat($("speed").value);
   state.lastTs=ts;
-  state.t+=dt;
-  if(state.t>=currentB().duration){ state.t=currentB().duration; state.playing=false; $("btnPlay").textContent="▶ 播放"; }
+  var mv=MOVES[state.move], TB=currentB();
+  if(state.fx.karo && inHitstop(mv, state.t)) dt*=0.25;
+  if(state.fx.slowmo && mv.hitstopIdx.length){
+    var he=TB.phases[mv.hitstopIdx[0]].end;
+    if(state.t>he && state.t<he+0.35) dt*=0.3;
+  }
+  state.t=snapT(state.t+dt);
+  if(state.t>=currentB().duration){
+    if(state.scenePlaying && state.sceneIndex<state.scene.length-1){
+      state.sceneIndex++;
+      var seg=state.scene[state.sceneIndex];
+      state.move=seg.move;
+      if(state.cams[seg.cam]) applyCamConfig(state.cams[seg.cam]);
+      syncPresetButtons();
+      state.t=0; state.lastTs=ts;
+      renderAll();
+      if(state.playing) requestAnimationFrame(tick);
+      return;
+    }
+    state.t=currentB().duration; state.playing=false; $("btnPlay").textContent="▶ 播放";
+  }
   renderAll();
   if(state.playing) requestAnimationFrame(tick);
 }
+function fxSync(){
+  state.fx.karo=$("fxKaro").checked;
+  state.fx.dun=parseInt($("fxDun").value, 10);
+  state.fx.flash=$("fxFlash").checked;
+  state.fx.white=$("fxWhite").checked;
+  state.fx.ring=$("fxRing").checked;
+  state.fx.sparks=$("fxSparks").checked;
+  state.fx.shake=$("fxShake").checked;
+  state.fx.slowmo=$("fxSlowmo").checked;
+  state.t=snapT(state.t);
+  renderAll();
+}
+["fxKaro","fxFlash","fxWhite","fxRing","fxSparks","fxShake","fxSlowmo"].forEach(function(id){
+  $(id).onchange=fxSync;
+});
+$("fxDun").onchange=fxSync;
+document.querySelectorAll("[data-camslot]").forEach(function(b){
+  b.onclick=function(){
+    state.camSlot=b.getAttribute("data-camslot");
+    if(state.cams[state.camSlot]) applyCamConfig(state.cams[state.camSlot]);
+    refreshCamSlotLabel(); renderAll();
+  };
+});
+$("btnSaveCam").onclick=function(){
+  state.cams[state.camSlot]=camSnapshot();
+  refreshCamSlotLabel(); renderAll();
+};
+$("btnSceneAdd").onclick=function(){
+  state.scene.push({ move:state.move, cam:state.camSlot });
+  renderSceneList();
+};
+$("btnSceneClear").onclick=function(){
+  state.scene=[]; state.scenePlaying=false;
+  $("btnScenePlay").textContent="连续播放整场";
+  renderSceneList();
+};
+$("sceneTrans").onchange=renderSceneList;
+$("btnScenePlay").onclick=function(){
+  if(!state.scene.length){ $("sceneList").textContent="场景为空：先点“加入当前招式”。"; return; }
+  if(state.scenePlaying){
+    state.scenePlaying=false; state.playing=false;
+    $("btnPlay").textContent="▶ 播放"; $("btnScenePlay").textContent="连续播放整场";
+    return;
+  }
+  state.scenePlaying=true; state.sceneIndex=0;
+  var seg0=state.scene[0];
+  state.move=seg0.move;
+  if(state.cams[seg0.cam]) applyCamConfig(state.cams[seg0.cam]);
+  syncPresetButtons();
+  state.t=0; state.playing=true;
+  $("btnPlay").textContent="⏸ 暂停"; $("btnScenePlay").textContent="停止连续播放";
+  state.lastTs=performance.now(); requestAnimationFrame(tick);
+  renderAll();
+};
+$("btnClawDraft").onclick=function(){ $("clawDraftBox").value=clawDraft(); };
+$("btnCopyDraft").onclick=function(){ $("clawDraftBox").select(); document.execCommand("copy"); };
+renderSceneList();
 renderAll();
 </script>
 </body>

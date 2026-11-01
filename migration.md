@@ -32,7 +32,7 @@
 | dy（u，负 = 上） | yOff（px，正 = 下）= −dy × u | 换算：符号翻转，别直接抄 |
 | sq | 体宽 ×(1 + sq×0.6)、体高 ×(1 − sq) | 公式精确（clawd 的 scale）；本页用 yOff 推导 sq 是近似 |
 | rot（弧度，绕脚） | lean（度）= rot × 57.3 | 近似：MotionLab 以骨盆为基准，Claw 以脚为基准，角度可比、支点不同 |
-| aR / aL（0 = 平举） | 手方向：a（弧度）= (sh − 90) × π/180，sh 为本页肩角（0 = 下垂） | 方向一致，但 Claw 臂仅 2.2u，手位置以 clawdAnchor 为准，不搬 MotionLab 手坐标 |
+| aR / aL（0 = 平举） | 手方向：右臂 aR = (shR − 90)°，左臂 aL = (90 − shL)°（镜像，sh 为本页肩角，0 = 下垂），换算成弧度 | 方向一致，但 Claw 臂仅 2.2u，手位置以 clawdAnchor 为准，不搬 MotionLab 手坐标；左臂公式于 v2.2 草稿中修正，此前笼统的 (sh−90) 只对右臂成立 |
 | 15 个节点名（pelvis、chest、head、shoulderR/L、elbowR/L、handR/L、hipR/L、kneeR/L、footR/L） | 同名节点 | 名称精确，坐标系不同：MotionLab 是 px，Claw 是 u，需除以 u 并以地面点为原点；v1 导出已注明“Claw 侧按节点名映射” |
 | eyes / mouth / lookX / lookY / squint / blush / gloom | 未迁移 | 本页方块脸固定为中性（两道眼缝＋一字嘴），表情仍由 Claw 侧接管 |
 
